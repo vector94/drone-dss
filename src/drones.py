@@ -1,100 +1,59 @@
-DRONES = [
-    {
-        "name": "DJI Matrice 300 RTK",
-        "type": "Multirotor",
-        "wind_resistance": 15,
-        "max_altitude": 5000,
-        "battery_life": 55,
-        "max_range": 15.0,
-        "payload": 2.7,
-        "speed": 82,
-        "thermal": True,
-        "night_vision": True,
-        "cost": 450,
-        "description": "Professional heavy-duty drone with full sensor suite",
-    },
-    {
-        "name": "DJI Matrice 30T",
-        "type": "Multirotor",
-        "wind_resistance": 12,
-        "max_altitude": 4500,
-        "battery_life": 41,
-        "max_range": 8.0,
-        "payload": 0.0,
-        "speed": 82,
-        "thermal": True,
-        "night_vision": True,
-        "cost": 300,
-        "description": "Compact thermal imaging drone for rapid deployment",
-    },
-    {
-        "name": "Parrot ANAFI USA",
-        "type": "Multirotor",
-        "wind_resistance": 14,
-        "max_altitude": 4000,
-        "battery_life": 32,
-        "max_range": 4.0,
-        "payload": 0.0,
-        "speed": 55,
-        "thermal": True,
-        "night_vision": False,
-        "cost": 200,
-        "description": "Lightweight thermal drone with military-grade security",
-    },
-    {
-        "name": "DJI Agras T40",
-        "type": "Multirotor",
-        "wind_resistance": 10,
-        "max_altitude": 2000,
-        "battery_life": 22,
-        "max_range": 3.0,
-        "payload": 40.0,
-        "speed": 40,
-        "thermal": False,
-        "night_vision": False,
-        "cost": 350,
-        "description": "Heavy-lift drone designed for payload and supply delivery",
-    },
-    {
-        "name": "senseFly eBee X",
-        "type": "Fixed-wing",
-        "wind_resistance": 13,
-        "max_altitude": 4000,
-        "battery_life": 90,
-        "max_range": 20.0,
-        "payload": 0.5,
-        "speed": 110,
-        "thermal": True,
-        "night_vision": False,
-        "cost": 400,
-        "description": "Fixed-wing survey drone built for large area coverage",
-    },
-    {
-        "name": "Autel EVO II Pro",
-        "type": "Multirotor",
-        "wind_resistance": 8,
-        "max_altitude": 3000,
-        "battery_life": 42,
-        "max_range": 9.0,
-        "payload": 0.0,
-        "speed": 72,
-        "thermal": False,
-        "night_vision": False,
-        "cost": 150,
-        "description": "Budget-friendly drone for clear-weather daytime operations",
-    },
-    {
-        "name": "Wingtra One Gen II",
-        "type": "VTOL Fixed-wing",
-        "wind_resistance": 12,
-        "max_altitude": 3600,
-        "battery_life": 59,
-        "max_range": 25.0,
-        "payload": 0.8,
-        "speed": 100,
-        "thermal": True,
-        "night_vision": False,
-        "cost": 500,
-        "description": "VTOL fixed-wing for ultra long-range mapping missions",
-    },
-]
+import os
+import pandas as pd
+
+_CSV_PATH = os.path.join(os.path.dirname(__file__), "sar_drones.csv")
+
+
+def _infer_airframe(row) -> str:
+    """Infer airframe category from drone_id and notes so app.py icon logic works."""
+    text = f"{row['drone_name']} {row.get('notes', '')}".lower()
+    drone_id = str(row["drone_id"]).lower()
+
+    if "helicopter" in text:
+        return "Helicopter"
+    if "vtol" in drone_id or "vtol fixed-wing" in text:
+        return "VTOL Fixed-wing"
+    if "fixed-wing" in text or "fixed wing" in text:
+        return "Fixed-wing"
+    return "Multirotor"
+
+
+def _load_drones(path: str) -> list[dict]:
+    df = pd.read_csv(path)
+    df = df[df["available"].astype(str).str.lower() == "true"].reset_index(drop=True)
+
+    records = []
+    for _, row in df.iterrows():
+        notes = row.get("notes", "")
+        description = (
+            str(notes).strip()
+            if pd.notna(notes) and str(notes).strip()
+            else str(row.get("best_use", ""))
+        )
+
+        records.append({
+            # Core fields used by engine.py and app.py
+            "name":            row["drone_name"],
+            "type":            _infer_airframe(row),
+            "wind_resistance": float(row["wind_resistance_ms"]),
+            "max_altitude":    int(row["altitude_capability_m"]),
+            "battery_life":    int(row["battery_life_min"]),
+            "max_range":       float(row["communication_range_km"]),
+            "payload":         float(row["payload_capacity_kg"]),
+            "speed":           float(row["speed_kmh"]),
+            "thermal":         str(row["has_thermal"]).lower() == "true",
+            "night_vision":    str(row["has_night_vision"]).lower() == "true",
+            "cost":            int(row["operational_cost_eur_per_mission"]),
+            "description":     description,
+            # Extra fields available for display
+            "manufacturer":    str(row["manufacturer"]),
+            "archetype":       str(row["drone_archetype"]),
+            "camera_type":     str(row["camera_type"]),
+            "country":         str(row.get("country_of_origin", "")),
+            "ndaa_compliant":  str(row.get("ndaa_compliant", "false")).lower() == "true",
+            "ip_rating":       str(row.get("ip_rating", "")),
+        })
+    return records
+
+
+DRONES = _load_drones(_CSV_PATH)

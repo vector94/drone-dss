@@ -5,6 +5,7 @@ import json
 
 from drones import DRONES
 from engine import apply_rules, score_drones, get_num_drones
+from weather import fetch_weather
 
 st.set_page_config(page_title="SAR Drone DSS", layout="wide", initial_sidebar_state="expanded")
 
@@ -120,6 +121,12 @@ components.html("""
 </script>
 """, height=0)
 
+# ── SESSION STATE DEFAULTS ──────────────────────────────────────────────────────
+for _key, _val in [("weather_select", "Clear"), ("tod_radio", "Day"),
+                   ("weather_info", None), ("weather_error", None)]:
+    if _key not in st.session_state:
+        st.session_state[_key] = _val
+
 # ── SIDEBAR ─────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -135,11 +142,49 @@ with st.sidebar:
     st.markdown("<p style='color:rgba(0,195,255,0.8);font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;margin-bottom:0.3rem;'>Emergency Type</p>", unsafe_allow_html=True)
     emergency = st.selectbox("et", ["Missing Person","Injured Person","Altitude Sickness","Supply Delivery"], label_visibility="collapsed")
 
-    st.markdown("<p style='color:rgba(0,195,255,0.8);font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;margin:0.6rem 0 0.3rem;'>Weather Condition</p>", unsafe_allow_html=True)
-    weather = st.selectbox("wc", ["Clear","Windy","Storm","Blizzard"], label_visibility="collapsed")
+    # ── Live weather fetch ───────────────────────────────────────────────────
+    st.markdown("<p style='color:rgba(0,195,255,0.8);font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;margin:0.6rem 0 0.3rem;'>Mission Location</p>", unsafe_allow_html=True)
+    city_input = st.text_input("loc", placeholder="e.g. Stockholm, Kiruna…", label_visibility="collapsed")
+    if st.button("🌍  Fetch Live Weather", use_container_width=True):
+        if city_input.strip():
+            try:
+                with st.spinner("Fetching weather data…"):
+                    _info = fetch_weather(city_input.strip())
+                st.session_state["weather_select"] = _info["condition"]
+                st.session_state["tod_radio"]      = _info["time_of_day"]
+                st.session_state["weather_info"]   = _info
+                st.session_state["weather_error"]  = None
+            except Exception as _e:
+                st.session_state["weather_error"]  = str(_e)
+                st.session_state["weather_info"]   = None
+        else:
+            st.session_state["weather_error"] = "Enter a city name first."
+
+    if st.session_state["weather_info"]:
+        _wi = st.session_state["weather_info"]
+        st.markdown(
+            f"<div style='background:rgba(0,255,136,0.07);border:1px solid rgba(0,255,136,0.25);"
+            f"border-radius:8px;padding:0.45rem 0.8rem;margin:0.3rem 0;font-size:0.78rem;'>"
+            f"<span style='color:#00ff88;font-weight:700;'>📍 {_wi['location']}</span><br>"
+            f"<span style='color:rgba(255,255,255,0.55);'>💨 {_wi['wind_speed']} m/s → "
+            f"<b style='color:#00c3ff;'>{_wi['condition']}</b> · {_wi['time_of_day']}</span></div>",
+            unsafe_allow_html=True,
+        )
+    elif st.session_state["weather_error"]:
+        st.markdown(
+            f"<div style='background:rgba(231,76,60,0.08);border:1px solid rgba(231,76,60,0.3);"
+            f"border-radius:8px;padding:0.45rem 0.8rem;margin:0.3rem 0;font-size:0.78rem;"
+            f"color:rgba(255,120,100,0.9);'>⚠ {st.session_state['weather_error']}</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<p style='color:rgba(0,195,255,0.8);font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;margin:0.9rem 0 0.3rem;'>Weather Condition</p>", unsafe_allow_html=True)
+    weather = st.selectbox("wc", ["Clear","Windy","Storm","Blizzard"],
+                           key="weather_select", label_visibility="collapsed")
 
     st.markdown("<p style='color:rgba(0,195,255,0.8);font-size:0.72rem;letter-spacing:2px;text-transform:uppercase;margin:0.6rem 0 0.3rem;'>Time of Day</p>", unsafe_allow_html=True)
-    time_of_day = st.radio("tod", ["Day","Night"], horizontal=True, label_visibility="collapsed")
+    time_of_day = st.radio("tod", ["Day","Night"], key="tod_radio",
+                           horizontal=True, label_visibility="collapsed")
     st.markdown("---")
 
     for label, key, lo, hi, default, step in [
