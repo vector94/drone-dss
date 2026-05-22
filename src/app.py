@@ -5,7 +5,8 @@ import json
 
 from drones import DRONES
 from engine import apply_rules, score_drones, get_num_drones
-from weather import fetch_weather
+from weather import fetch_weather, fetch_weather_by_coords
+from map_component import render_map
 
 st.set_page_config(page_title="SAR Drone DSS", layout="wide", initial_sidebar_state="expanded")
 
@@ -123,9 +124,21 @@ components.html("""
 
 # ── SESSION STATE DEFAULTS ──────────────────────────────────────────────────────
 for _key, _val in [("weather_select", "Clear"), ("tod_radio", "Day"),
-                   ("weather_info", None), ("weather_error", None)]:
+                   ("weather_info", None), ("weather_error", None),
+                   ("map_lat", None), ("map_lon", None), ("map_last_click", None),
+                   ("map_view_lat", None), ("map_view_lon", None), ("map_zoom", None),
+                   ("sim_running", False), ("_pending_weather", None)]:
     if _key not in st.session_state:
         st.session_state[_key] = _val
+
+# ── APPLY PENDING WEATHER UPDATE (must run before any widgets render) ────────────
+if st.session_state["_pending_weather"]:
+    _upd = st.session_state["_pending_weather"]
+    st.session_state["_pending_weather"] = None
+    st.session_state["weather_select"]   = _upd.get("condition", "Clear")
+    st.session_state["tod_radio"]        = _upd.get("time_of_day", "Day")
+    st.session_state["weather_info"]     = _upd
+    st.session_state["weather_error"]    = None
 
 # ── SIDEBAR ─────────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -198,7 +211,9 @@ with st.sidebar:
         locals()[key] = st.slider(key, lo, hi, default, step, label_visibility="collapsed")
 
     st.markdown("---")
-    run = st.button("⚡  RUN DSS SIMULATION")
+    if st.button("⚡  RUN DSS SIMULATION", use_container_width=True):
+        st.session_state["sim_running"] = True
+    run = st.session_state["sim_running"]
 
 # ── HEADER ──────────────────────────────────────────────────────────────────────
 components.html("""
@@ -233,6 +248,45 @@ components.html("""
   <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
 </div>
 """, height=130)
+
+# ── MAP ─────────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div style="display:flex;align-items:center;gap:0.7rem;margin:0.9rem 0 0.5rem;">
+  <div style="flex:1;height:1px;background:rgba(255,255,255,0.05);"></div>
+  <div style="font-size:0.68rem;letter-spacing:2.5px;text-transform:uppercase;
+              color:rgba(0,195,255,0.55);white-space:nowrap;">🗺 &nbsp;MISSION LOCATION</div>
+  <div style="flex:1;height:1px;background:rgba(255,255,255,0.05);"></div>
+</div>""", unsafe_allow_html=True)
+
+_map_result = render_map()
+
+if _map_result:
+    st.session_state["map_lat"]      = _map_result["lat"]
+    st.session_state["map_lon"]      = _map_result["lon"]
+    # Re-centre the view on the new pin for the next render
+    st.session_state["map_view_lat"] = _map_result["lat"]
+    st.session_state["map_view_lon"] = _map_result["lon"]
+    try:
+        _winfo = fetch_weather_by_coords(_map_result["lat"], _map_result["lon"])
+        # Store as pending — will be applied before widgets render on next rerun
+        st.session_state["_pending_weather"] = _winfo
+        st.session_state["weather_error"]    = None
+    except Exception as _we:
+        st.session_state["weather_error"] = str(_we)
+    st.rerun()
+
+# Coordinates + location label below the map
+_pin_lat = st.session_state.get("map_lat") or 0.0
+_pin_lon = st.session_state.get("map_lon") or 0.0
+_loc_name = (st.session_state["weather_info"] or {}).get("location", "")
+_loc_hint = f"&nbsp;·&nbsp;<span style='color:rgba(0,195,255,0.55);'>{_loc_name}</span>" if _loc_name else ""
+st.markdown(
+    f"<div style='text-align:center;font-size:0.7rem;color:rgba(255,255,255,0.25);"
+    f"margin:-0.3rem 0 0.8rem;font-family:monospace;'>"
+    f"📍 {_pin_lat:.4f}°N &nbsp;{_pin_lon:.4f}°E{_loc_hint}"
+    f"&nbsp;&nbsp;<span style='color:rgba(255,255,255,0.15);'>· click map to reposition</span></div>",
+    unsafe_allow_html=True,
+)
 
 # ── WELCOME ─────────────────────────────────────────────────────────────────────
 if not run:
