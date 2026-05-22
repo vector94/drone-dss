@@ -41,6 +41,8 @@ def fetch_weather(city: str) -> dict:
         "time_of_day": "Day" if is_day else "Night",
         "wind_speed": wind_speed,
         "location": display_name,
+        "lat": lat,
+        "lon": lon,
     }
 
 

@@ -34,7 +34,7 @@ def _init_pin() -> None:
         st.session_state["map_last_click"] = None
 
 
-def render_map() -> dict | None:
+def render_map(dark: bool = True) -> dict | None:
     """
     Render an interactive Folium map for mission location selection.
 
@@ -54,7 +54,7 @@ def render_map() -> dict | None:
     m = folium.Map(
         location=[view_lat, view_lon],
         zoom_start=zoom,
-        tiles="CartoDB dark_matter",
+        tiles="CartoDB dark_matter" if dark else "CartoDB positron",
     )
 
     # Mission pin.
