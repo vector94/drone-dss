@@ -273,16 +273,50 @@ div.st-key-open_panel button * {{
     border-radius: 10px !important;
     overflow: hidden !important;
 }}
-[data-testid="stExpander"] summary {{
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] details summary {{
+    background: transparent !important;
     color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
     font-weight: 500 !important;
     font-size: 0.875rem !important;
     padding: 0.75rem 1rem !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+    letter-spacing: normal !important;
+    cursor: pointer !important;
+    list-style: none !important;
 }}
-[data-testid="stExpander"] summary:hover {{
+[data-testid="stExpander"] summary::-webkit-details-marker,
+[data-testid="stExpander"] summary::marker {{
+    display: none !important;
+}}
+[data-testid="stExpander"] summary:hover,
+[data-testid="stExpander"] details summary:hover {{
     background: {T['surface2']} !important;
+    transform: none !important;
+    box-shadow: none !important;
 }}
-[data-testid="stExpander"] > div > div {{
+/* Arrow injected by JS — plain Unicode › in Inter, rotated by CSS */
+.sar-exp-arrow {{
+    font-family: 'Inter', sans-serif !important;
+    font-size: 1.15rem !important;
+    font-weight: 400 !important;
+    line-height: 1 !important;
+    color: {T['muted']} !important;
+    -webkit-text-fill-color: {T['muted']} !important;
+    display: inline-block !important;
+    flex-shrink: 0 !important;
+    transition: transform 0.18s ease !important;
+    transform: rotate(0deg) !important;
+}}
+[data-testid="stExpander"] details[open] .sar-exp-arrow {{
+    transform: rotate(90deg) !important;
+}}
+[data-testid="stExpander"] > div > div,
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] {{
     padding: 0.25rem 0.75rem 0.75rem !important;
 }}
 
@@ -360,21 +394,49 @@ div[data-testid="stHorizontalBlock"] div.stButton > button:hover {{
 </style>
 """, unsafe_allow_html=True)
 
-# ── ENTER KEY → BUTTON CLICK ────────────────────────────────────────────────────
+# ── ENTER KEY → BUTTON CLICK  +  EXPANDER ARROW FIX ────────────────────────────
 components.html("""
 <script>
 (function () {
     var doc = window.parent.document;
+
+    // ── Enter key → Fetch Weather button ─────────────────────────────────────
     doc.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && doc.activeElement && doc.activeElement.tagName === 'INPUT') {
             e.preventDefault();
             var btn = doc.querySelector('div.st-key-fetch_weather button');
-            if (btn) {
-                btn.focus();
-                btn.click();
-            }
+            if (btn) { btn.focus(); btn.click(); }
         }
     }, true);
+
+    // ── Fix expander arrows ───────────────────────────────────────────────────
+    // Streamlit 1.57 renders the toggle icon via a Material Symbols ligature
+    // ("keyboard_arrow_right"). The global Inter font-family override breaks the
+    // ligature and shows literal text. We find those elements and replace their
+    // text content with a plain Unicode arrow that Inter renders correctly; CSS
+    // then rotates it on open via  details[open] .sar-exp-arrow.
+    function fixExpanders() {
+        var summaries = doc.querySelectorAll(
+            '[data-testid="stExpander"] summary:not([data-arrow-fixed])'
+        );
+        summaries.forEach(function (summary) {
+            var nodes = summary.querySelectorAll('*');
+            for (var i = 0; i < nodes.length; i++) {
+                var el = nodes[i];
+                var txt = el.textContent.trim();
+                if (txt === 'keyboard_arrow_right' || txt === 'keyboard_arrow_down') {
+                    el.textContent = '›';   // › single right-pointing angle quotation
+                    el.removeAttribute('style');
+                    el.className = 'sar-exp-arrow';
+                    summary.setAttribute('data-arrow-fixed', '1');
+                    break;
+                }
+            }
+        });
+    }
+
+    fixExpanders();
+    new MutationObserver(fixExpanders).observe(doc.body, { childList: true, subtree: true });
 })();
 </script>
 """, height=0)
@@ -465,11 +527,9 @@ if _sb_open:
 
         # ── Live weather ──
         slabel("Mission Location")
-        with st.form("weather_form", clear_on_submit=False):
-            city_input   = st.text_input("loc", placeholder="e.g. Stockholm, Kiruna…", label_visibility="collapsed")
-            fetch_clicked = st.form_submit_button("🌐  Fetch Live Weather", use_container_width=True)
+        city_input = st.text_input("loc", key="city_input", placeholder="e.g. Stockholm, Kiruna…", label_visibility="collapsed")
 
-        if fetch_clicked:
+        if st.button("🌐  Fetch Live Weather", key="fetch_weather", use_container_width=True):
             if city_input.strip():
                 try:
                     with st.spinner("Fetching weather…"):
