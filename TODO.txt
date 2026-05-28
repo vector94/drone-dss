@@ -1,0 +1,3 @@
+Next meeting:
+- model equations update
+- update altitude, distance and budget

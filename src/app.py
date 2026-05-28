@@ -1,4 +1,5 @@
 import math
+
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.graph_objects as go
@@ -6,7 +7,8 @@ import json
 
 from drones import DRONES
 from engine import apply_rules, score_drones, get_num_drones
-from weather import fetch_weather
+from weather import fetch_weather, fetch_weather_by_coords
+from map_component import render_map, haversine
 
 st.set_page_config(page_title="SAR Drone DSS", layout="wide", initial_sidebar_state="collapsed")
 
@@ -20,6 +22,7 @@ for _key, _val in [
     # Persisted sidebar widget values (used when panel is hidden)
     ("emergency", "Missing Person"),
     ("area", 5.0),
+    ("map_area", 5.0),
     ("dist", 5.0),
     ("sup", 0.0),
     ("bud", 500),
@@ -27,9 +30,24 @@ for _key, _val in [
     ("submitted_scenario", None),
     ("sim_run_id", 0),
     ("city_input", ""),
+    ("map_lat", None), ("map_lon", None), ("map_last_click", None),
+    ("map_view_lat", None), ("map_view_lon", None), ("map_zoom", None),
+    ("hq_lat", None), ("hq_lon", None), ("place_mode", "Mission Pin"),
+    ("sim_running", False), ("_pending_weather", None),
 ]:
     if _key not in st.session_state:
         st.session_state[_key] = _val
+
+# ── APPLY PENDING WEATHER UPDATE (must run before any widgets render) ────────────
+if st.session_state.get("_pending_weather"):
+    _upd = st.session_state["_pending_weather"]
+    st.session_state["_pending_weather"] = None
+    st.session_state["weather_select"]   = _upd.get("condition", "Clear")
+    st.session_state["tod_radio"]        = _upd.get("time_of_day", "Day")
+    st.session_state["weather_info"]     = _upd
+    st.session_state["weather_error"]    = None
+    if _upd.get("elevation") is not None:
+        st.session_state["altitude_auto"] = _upd["elevation"]
 
 _dark = st.session_state["theme"] == "dark"
 
@@ -318,8 +336,11 @@ div[role="tooltip"] * {{
     border-radius: 10px !important;
     overflow: hidden !important;
 }}
-[data-testid="stExpander"] summary {{
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] details summary {{
+    background: transparent !important;
     color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
     font-weight: 500 !important;
     font-size: 0.875rem !important;
     line-height: 1.35 !important;
@@ -333,11 +354,43 @@ div[role="tooltip"] * {{
     font-weight: 650 !important;
     line-height: 1.35 !important;
     margin: 0 !important;
+    padding: 0.75rem 1rem !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+    letter-spacing: normal !important;
+    cursor: pointer !important;
+    list-style: none !important;
 }}
-[data-testid="stExpander"] summary:hover {{
+[data-testid="stExpander"] summary::-webkit-details-marker,
+[data-testid="stExpander"] summary::marker {{
+    display: none !important;
+}}
+[data-testid="stExpander"] summary:hover,
+[data-testid="stExpander"] details summary:hover {{
     background: {T['surface2']} !important;
+    transform: none !important;
+    box-shadow: none !important;
 }}
-[data-testid="stExpander"] > div > div {{
+/* Arrow injected by JS — plain Unicode › in Inter, rotated by CSS */
+.sar-exp-arrow {{
+    font-family: 'Inter', sans-serif !important;
+    font-size: 1.15rem !important;
+    font-weight: 400 !important;
+    line-height: 1 !important;
+    color: {T['muted']} !important;
+    -webkit-text-fill-color: {T['muted']} !important;
+    display: inline-block !important;
+    flex-shrink: 0 !important;
+    transition: transform 0.18s ease !important;
+    transform: rotate(0deg) !important;
+}}
+[data-testid="stExpander"] details[open] .sar-exp-arrow {{
+    transform: rotate(90deg) !important;
+}}
+[data-testid="stExpander"] > div > div,
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] {{
     padding: 0.25rem 0.75rem 0.75rem !important;
 }}
 
@@ -411,14 +464,63 @@ div[data-testid="stHorizontalBlock"] div.stButton > button:hover {{
     transform: none !important;
     box-shadow: none !important;
 }}
+
 </style>
 """, unsafe_allow_html=True)
+
+# ── ENTER KEY → BUTTON CLICK  +  EXPANDER ARROW FIX ────────────────────────────
+components.html("""
+<script>
+(function () {
+    var doc = window.parent.document;
+
+    // ── Enter key → Fetch Weather button ─────────────────────────────────────
+    doc.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && doc.activeElement && doc.activeElement.tagName === 'INPUT') {
+            e.preventDefault();
+            var btn = doc.querySelector('div.st-key-fetch_weather button');
+            if (btn) { btn.focus(); btn.click(); }
+        }
+    }, true);
+
+    // ── Fix expander arrows ───────────────────────────────────────────────────
+    // Streamlit 1.57 renders the toggle icon via a Material Symbols ligature
+    // ("keyboard_arrow_right"). The global Inter font-family override breaks the
+    // ligature and shows literal text. We find those elements and replace their
+    // text content with a plain Unicode arrow that Inter renders correctly; CSS
+    // then rotates it on open via  details[open] .sar-exp-arrow.
+    function fixExpanders() {
+        var summaries = doc.querySelectorAll(
+            '[data-testid="stExpander"] summary:not([data-arrow-fixed])'
+        );
+        summaries.forEach(function (summary) {
+            var nodes = summary.querySelectorAll('*');
+            for (var i = 0; i < nodes.length; i++) {
+                var el = nodes[i];
+                var txt = el.textContent.trim();
+                if (txt === 'keyboard_arrow_right' || txt === 'keyboard_arrow_down') {
+                    el.textContent = '›';   // › single right-pointing angle quotation
+                    el.removeAttribute('style');
+                    el.className = 'sar-exp-arrow';
+                    summary.setAttribute('data-arrow-fixed', '1');
+                    break;
+                }
+            }
+        });
+    }
+
+    fixExpanders();
+    new MutationObserver(fixExpanders).observe(doc.body, { childList: true, subtree: true });
+})();
+</script>
+""", height=0)
 
 # ── LAYOUT ──────────────────────────────────────────────────────────────────────
 _sb_open = st.session_state["sidebar_open"]
 run      = st.session_state["run"]
 
 def current_scenario_from_state():
+    _wi = st.session_state.get("weather_info") or {}
     return {
         "emergency":     st.session_state["emergency"],
         "weather":       st.session_state["weather_select"],
@@ -428,7 +530,23 @@ def current_scenario_from_state():
         "distance":      st.session_state["dist"],
         "supply_weight": st.session_state["sup"],
         "budget":        st.session_state["bud"],
+        # Live values from weather API; engine falls back to category estimates if None
+        "wind_speed":    _wi.get("wind_speed"),
+        "temperature":   _wi.get("temperature"),
     }
+
+def sync_map_area_to_sidebar_area():
+    st.session_state["area"] = st.session_state.get("map_area", st.session_state.get("area", 5.0))
+
+
+def _apply_weather_info(info: dict) -> None:
+    """Apply a fetched weather dict to all relevant session-state keys."""
+    st.session_state["weather_select"] = info.get("condition", "Clear")
+    st.session_state["tod_radio"]      = info.get("time_of_day", "Day")
+    st.session_state["weather_info"]   = info
+    st.session_state["weather_error"]  = None
+    if info.get("elevation") is not None:
+        st.session_state["altitude_auto"] = info["elevation"]
 
 if _sb_open:
     _col_sb, _col_main = st.columns([1, 3], gap="small")
@@ -484,21 +602,22 @@ if _sb_open:
                                                "Altitude Sickness", "Supply Delivery"],
                                  key="emergency", label_visibility="collapsed")
 
+        # ── Live weather ──
         slabel("Mission Location")
-        city_input = st.text_input("Location", key="city_input",
-                                   placeholder="e.g. Stockholm, Kiruna…",
-                                   label_visibility="collapsed")
+        city_input = st.text_input("loc", key="city_input", placeholder="e.g. Stockholm, Kiruna…", label_visibility="collapsed")
 
         if st.button("🌐  Fetch Live Weather", key="fetch_weather", use_container_width=True):
             if city_input.strip():
                 try:
                     with st.spinner("Fetching weather…"):
                         _info = fetch_weather(city_input.strip())
-                    st.session_state["weather_select"] = _info["condition"]
-                    st.session_state["tod_radio"]      = _info["time_of_day"]
-                    st.session_state["weather_info"]   = _info
-                    st.session_state["altitude_auto"]  = _info.get("elevation", 0)
-                    st.session_state["weather_error"]  = None
+                    _apply_weather_info(_info)
+                    # Move map pin to the geocoded city location
+                    st.session_state["map_lat"]      = _info["lat"]
+                    st.session_state["map_lon"]      = _info["lon"]
+                    st.session_state["map_view_lat"] = _info["lat"]
+                    st.session_state["map_view_lon"] = _info["lon"]
+                    st.session_state["map_zoom"]     = 10
                 except Exception as _e:
                     st.session_state["weather_error"] = str(_e)
                     st.session_state["weather_info"]  = None
@@ -581,9 +700,10 @@ if _sb_open:
             f"</div>", unsafe_allow_html=True,
         )
         alt = _alt_val
-
+        
         slabel("Area to Cover (km²)")
         area = st.slider("Area", 0.5, 30.0, 5.0, 0.5, key="area", label_visibility="collapsed")
+        st.session_state["map_area"] = area
 
         _dist_estimate = round(min(25.0, max(0.5, math.sqrt(area) * 1.5)), 1)
         slabel(f"Distance (km) &nbsp;·&nbsp; <span style='color:{T['muted']};font-weight:400;"
@@ -670,6 +790,126 @@ with _header_area:
 </div>
 """, unsafe_allow_html=True)
 
+# ── MAP ──────────────────────────────────────────────────────────────────────────
+@st.fragment
+def _map_section():
+    _d      = st.session_state.get("theme", "light") == "dark"
+    _border = "#30363D" if _d else "#E2E8F0"
+    _muted  = "#8B949E" if _d else "#64748B"
+
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;gap:0.7rem;margin:0.9rem 0 0.5rem;">
+        <div style="height:1px;flex:1;background:{_border};"></div>
+        <div style="font-size:0.68rem;font-weight:600;letter-spacing:1px;
+                    text-transform:uppercase;color:{_muted};">Mission Location</div>
+        <div style="height:1px;flex:1;background:{_border};"></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _area_km2 = st.session_state.get("map_area", st.session_state.get("area", 5.0))
+
+    _result = render_map(
+        dark=_d,
+        mode=st.session_state.get("place_mode", "Mission Pin"),
+        hq_lat=st.session_state.get("hq_lat"),
+        hq_lon=st.session_state.get("hq_lon"),
+        area_km2=_area_km2,
+    )
+
+    # Process click — controls must render first so their session state is
+    # committed before the rerun is triggered.
+    _needs_rerun = False
+    if _result:
+        if st.session_state.get("place_mode") == "HQ Base":
+            st.session_state["hq_lat"] = _result["lat"]
+            st.session_state["hq_lon"] = _result["lon"]
+            st.session_state["place_mode"] = "HQ Base"
+        else:
+            st.session_state["map_lat"] = _result["lat"]
+            st.session_state["map_lon"] = _result["lon"]
+            with st.spinner("Fetching weather for location…"):
+                try:
+                    _w = fetch_weather_by_coords(_result["lat"], _result["lon"])
+                    _apply_weather_info(_w)
+                except Exception as _e:
+                    st.session_state["weather_error"] = str(_e)
+        _needs_rerun = True
+
+    # ── Controls below map ──
+    _col_mode, _col_area = st.columns([1, 2])
+    with _col_mode:
+        st.radio(
+            "Placing Pin",
+            options=["Mission Pin", "HQ Base"],
+            format_func=lambda x: f"🔴 {x}" if x == "Mission Pin" else f"🔵 {x}",
+            key="place_mode",
+            horizontal=True,
+        )
+    with _col_area:
+        st.slider(
+            "Search Area (km²)",
+            0.5, 30.0, 5.0, 0.5,
+            key="map_area",
+            on_change=sync_map_area_to_sidebar_area,
+        )
+
+    # ── Distance read-only display (lives here so it updates on fragment rerun) ──
+    _hq_lat_d = st.session_state.get("hq_lat")
+    _hq_lon_d = st.session_state.get("hq_lon")
+    _ms_lat_d = st.session_state.get("map_lat")
+    _ms_lon_d = st.session_state.get("map_lon")
+
+    if _hq_lat_d is not None and _ms_lat_d is not None:
+        _dist_km = haversine(_hq_lat_d, _hq_lon_d, _ms_lat_d, _ms_lon_d)
+        st.session_state["dist"] = _dist_km
+        _dist_display = f"{_dist_km} km"
+        _dist_note    = "from map pins"
+        _dist_color   = T["green"]
+    else:
+        _dist_display = f"{st.session_state.get('dist', 5.0)} km"
+        _dist_note    = "set HQ + mission pins"
+        _dist_color   = T["muted"]
+
+    st.markdown(
+        f"<div style='background:{T['surface2']};border:1px solid {T['border']};"
+        f"border-radius:8px;padding:0.5rem 0.75rem;margin:0.35rem 0;font-size:0.72rem;"
+        f"display:flex;align-items:center;justify-content:space-between;'>"
+        f"<span style='font-weight:600;color:{_muted};text-transform:uppercase;"
+        f"letter-spacing:0.7px;'>Distance</span>"
+        f"<span style='display:flex;align-items:center;gap:0.6rem;'>"
+        f"<span style='font-size:1rem;font-weight:700;color:{T['text']};'>{_dist_display}</span>"
+        f"<span style='font-size:0.7rem;color:{_dist_color};font-weight:500;'>{_dist_note}</span>"
+        f"</span></div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Info bar: pin coordinates ──
+    _info_parts = []
+    if _ms_lat_d is not None:
+        _info_parts.append(f"🔴 {_ms_lat_d:.4f}°, {_ms_lon_d:.4f}°")
+    if _hq_lat_d is not None:
+        _info_parts.append(f"🔵 {_hq_lat_d:.4f}°, {_hq_lon_d:.4f}°")
+    if _info_parts:
+        st.markdown(
+            f"<div style='text-align:center;font-size:0.72rem;color:{_muted};"
+            f"margin:0.2rem 0 0.4rem;'>"
+            + " &nbsp;·&nbsp; ".join(_info_parts) + "</div>",
+            unsafe_allow_html=True,
+        )
+
+    if _needs_rerun:
+        if st.session_state.get("place_mode") == "HQ Base":
+            # HQ pin: only coords changed. A fragment-scoped rerun is enough —
+            # it re-renders the map with the new pin and the distance card
+            # together, with no full-page cost and no visible delay.
+            st.rerun(scope="fragment")
+        else:
+            # Mission pin: weather was fetched; sidebar altitude/weather/distance
+            # must update immediately → full-page rerun required.
+            st.rerun(scope="app")
+
+_map_section()
+
 if run:
     if st.button("↺  New Mission", key="new_mission"):
         st.session_state["run"] = False
@@ -723,6 +963,7 @@ if not run:
 
 # ── SIMULATION ──────────────────────────────────────────────────────────────────
 else:
+    # Use the scenario captured at click time; fall back to current state if missing
     scenario = st.session_state.get("submitted_scenario") or current_scenario_from_state()
 
     passed, eliminated = apply_rules(DRONES, scenario)
