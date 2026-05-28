@@ -1,7 +1,26 @@
+from __future__ import annotations
+
 import folium
 import requests
 import streamlit as st
+from branca.element import MacroElement
+from jinja2 import Template
 from streamlit_folium import st_folium
+
+
+class _FocusMap(MacroElement):
+    """Focuses the Leaflet container on map ready so the first click registers."""
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        {{ this._parent.get_name() }}.whenReady(function () {
+            var el = document.querySelector('.leaflet-container');
+            if (el) {
+                el.setAttribute('tabindex', '0');
+                el.focus({ preventScroll: true });
+            }
+        });
+        {% endmacro %}
+    """)
 
 _FALLBACK_LAT = 56.1800  # Karlskrona, SE (BTH campus)
 _FALLBACK_LON = 15.5900
@@ -55,7 +74,10 @@ def render_map(dark: bool = True) -> dict | None:
         location=[view_lat, view_lon],
         zoom_start=zoom,
         tiles="CartoDB dark_matter" if dark else "CartoDB positron",
+        doubleClickZoom=False,
     )
+
+    _FocusMap().add_to(m)
 
     # Mission pin.
     # pointer-events:none on the div lets all clicks fall through to the map
@@ -82,17 +104,9 @@ def render_map(dark: bool = True) -> dict | None:
         m,
         use_container_width=True,
         height=380,
-        returned_objects=["last_clicked", "center", "zoom"],
+        returned_objects=["last_clicked"],
         key="mission_map",
     )
-
-    # Persist current view so panning/zooming survives reruns
-    if out:
-        if out.get("center"):
-            st.session_state["map_view_lat"] = out["center"]["lat"]
-            st.session_state["map_view_lon"] = out["center"]["lng"]
-        if out.get("zoom") is not None:
-            st.session_state["map_zoom"] = out["zoom"]
 
     # Detect a genuinely new click (deduplicate to stop rerun loops)
     if out and out.get("last_clicked"):
@@ -101,6 +115,9 @@ def render_map(dark: bool = True) -> dict | None:
         new_lon = round(c["lng"], 5)
         if st.session_state["map_last_click"] != (new_lat, new_lon):
             st.session_state["map_last_click"] = (new_lat, new_lon)
+            # Re-center view on the clicked point for the next render
+            st.session_state["map_view_lat"] = new_lat
+            st.session_state["map_view_lon"] = new_lon
             return {"lat": new_lat, "lon": new_lon}
 
     return None

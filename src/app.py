@@ -447,37 +447,45 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── MAP ──────────────────────────────────────────────────────────────────────────
-st.markdown(f"""
-<div style="display:flex;align-items:center;gap:0.7rem;margin:0.9rem 0 0.5rem;">
-    <div style="height:1px;flex:1;background:{T['border']};"></div>
-    <div style="font-size:0.68rem;font-weight:600;letter-spacing:1px;
-                text-transform:uppercase;color:{T['muted']};">Mission Location</div>
-    <div style="height:1px;flex:1;background:{T['border']};"></div>
-</div>
-""", unsafe_allow_html=True)
+@st.fragment
+def _map_section():
+    _d      = st.session_state.get("theme", "light") == "dark"
+    _border = "#30363D" if _d else "#E2E8F0"
+    _muted  = "#8B949E" if _d else "#64748B"
 
-_map_result = render_map(dark=_dark)
-if _map_result:
-    st.session_state["map_lat"]      = _map_result["lat"]
-    st.session_state["map_lon"]      = _map_result["lon"]
-    st.session_state["map_view_lat"] = _map_result["lat"]
-    st.session_state["map_view_lon"] = _map_result["lon"]
-    try:
-        _winfo = fetch_weather_by_coords(_map_result["lat"], _map_result["lon"])
-        st.session_state["_pending_weather"] = _winfo
-        st.session_state["weather_error"]    = None
-    except Exception as _we:
-        st.session_state["weather_error"] = str(_we)
-    st.rerun()
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;gap:0.7rem;margin:0.9rem 0 0.5rem;">
+        <div style="height:1px;flex:1;background:{_border};"></div>
+        <div style="font-size:0.68rem;font-weight:600;letter-spacing:1px;
+                    text-transform:uppercase;color:{_muted};">Mission Location</div>
+        <div style="height:1px;flex:1;background:{_border};"></div>
+    </div>
+    """, unsafe_allow_html=True)
 
-if st.session_state["map_lat"] is not None:
-    st.markdown(
-        f"<div style='text-align:center;font-size:0.72rem;color:{T['muted']};"
-        f"margin:0.3rem 0 0.8rem;'>"
-        f"📍 {st.session_state['map_lat']:.5f}°, {st.session_state['map_lon']:.5f}°"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    _result = render_map(dark=_d)
+
+    if _result:
+        st.session_state["map_lat"] = _result["lat"]
+        st.session_state["map_lon"] = _result["lon"]
+        with st.spinner("Fetching weather for location…"):
+            try:
+                _w = fetch_weather_by_coords(_result["lat"], _result["lon"])
+                st.session_state["_pending_weather"] = _w
+                st.session_state["weather_error"]    = None
+            except Exception as _e:
+                st.session_state["weather_error"] = str(_e)
+        st.rerun(scope="app")
+
+    if st.session_state["map_lat"] is not None:
+        st.markdown(
+            f"<div style='text-align:center;font-size:0.72rem;color:{_muted};"
+            f"margin:0.3rem 0 0.8rem;'>"
+            f"📍 {st.session_state['map_lat']:.5f}°, {st.session_state['map_lon']:.5f}°"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+_map_section()
 
 # ── WELCOME ─────────────────────────────────────────────────────────────────────
 if not run:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import requests
 
 _GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
