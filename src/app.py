@@ -1,3 +1,5 @@
+import math
+
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.graph_objects as go
@@ -17,6 +19,7 @@ for _key, _val in [
     ("theme", "light"),
     ("map_lat", None), ("map_lon", None), ("map_last_click", None),
     ("map_view_lat", None), ("map_view_lon", None), ("map_zoom", None),
+    ("hq_lat", None), ("hq_lon", None), ("place_mode", "Mission Pin"),
     ("sim_running", False), ("_pending_weather", None),
 ]:
     if _key not in st.session_state:
@@ -266,6 +269,7 @@ div.stButton.theme-toggle > button:hover {{
 [data-baseweb="input"]:has(input:not(:placeholder-shown)) ~ [data-testid="InputInstructions"] {{
     display: block !important;
 }}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -389,13 +393,23 @@ with st.sidebar:
 
     for label, key, lo, hi, default, step in [
         ("Altitude (m)",         "alt",  100,  5000, 1500, 100),
-        ("Area to Cover (km²)",  "area", 0.5,  30.0, 5.0,  0.5),
-        ("Distance (km)",        "dist", 0.5,  25.0, 5.0,  0.5),
         ("Supply Weight (kg)",   "sup",  0.0,  30.0, 0.0,  0.5),
         ("Budget per Drone (€)", "bud",  100,  1000, 500,  25),
     ]:
         slabel(label)
         locals()[key] = st.slider(key, lo, hi, default, step, label_visibility="collapsed")
+
+    # Distance — auto-calculated silently from HQ→Mission pins when both are set
+    _hq_lat = st.session_state.get("hq_lat")
+    _hq_lon = st.session_state.get("hq_lon")
+    _ms_lat = st.session_state.get("map_lat")
+    _ms_lon = st.session_state.get("map_lon")
+    if _hq_lat is not None and _ms_lat is not None:
+        _phi1, _phi2 = math.radians(_hq_lat), math.radians(_ms_lat)
+        _a = (math.sin(math.radians(_ms_lat - _hq_lat) / 2) ** 2
+              + math.cos(_phi1) * math.cos(_phi2)
+              * math.sin(math.radians(_ms_lon - _hq_lon) / 2) ** 2)
+        dist = max(0.5, min(25.0, round(2 * 6371 * math.asin(math.sqrt(_a)), 1)))
 
     st.markdown("---")
     if st.button("⚡  Run DSS Simulation", use_container_width=True):
@@ -447,7 +461,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── MAP ──────────────────────────────────────────────────────────────────────────
-@st.fragment
 def _map_section():
     _d      = st.session_state.get("theme", "light") == "dark"
     _border = "#30363D" if _d else "#E2E8F0"
@@ -462,28 +475,82 @@ def _map_section():
     </div>
     """, unsafe_allow_html=True)
 
-    _result = render_map(dark=_d)
+    _area_km2 = st.session_state.get("area", 5.0)
 
+    _result = render_map(
+        dark=_d,
+        mode=st.session_state.get("place_mode", "Mission Pin"),
+        hq_lat=st.session_state.get("hq_lat"),
+        hq_lon=st.session_state.get("hq_lon"),
+        area_km2=_area_km2,
+    )
+
+    # Process click — but don't rerun yet; let controls render first so
+    # slider/radio session state is committed before the rerun wipes it.
+    _needs_rerun = False
     if _result:
-        st.session_state["map_lat"] = _result["lat"]
-        st.session_state["map_lon"] = _result["lon"]
-        with st.spinner("Fetching weather for location…"):
-            try:
-                _w = fetch_weather_by_coords(_result["lat"], _result["lon"])
-                st.session_state["_pending_weather"] = _w
-                st.session_state["weather_error"]    = None
-            except Exception as _e:
-                st.session_state["weather_error"] = str(_e)
-        st.rerun(scope="app")
+        if st.session_state.get("place_mode") == "HQ Base":
+            st.session_state["hq_lat"] = _result["lat"]
+            st.session_state["hq_lon"] = _result["lon"]
+            st.session_state["place_mode"] = "HQ Base"
+        else:
+            st.session_state["map_lat"] = _result["lat"]
+            st.session_state["map_lon"] = _result["lon"]
+            with st.spinner("Fetching weather for location…"):
+                try:
+                    _w = fetch_weather_by_coords(_result["lat"], _result["lon"])
+                    st.session_state["_pending_weather"] = _w
+                    st.session_state["weather_error"]    = None
+                except Exception as _e:
+                    st.session_state["weather_error"] = str(_e)
+        _needs_rerun = True
 
-    if st.session_state["map_lat"] is not None:
+    # ── Controls below map ──
+    _col_mode, _col_area = st.columns([1, 2])
+    with _col_mode:
+        st.radio(
+            "Placing Pin",
+            options=["Mission Pin", "HQ Base"],
+            format_func=lambda x: f"🔴 {x}" if x == "Mission Pin" else f"🔵 {x}",
+            key="place_mode",
+            horizontal=True,
+        )
+    with _col_area:
+        st.slider(
+            "Search Area (km²)",
+            0.5, 100.0, 5.0, 0.5,
+            key="area",
+        )
+
+    # ── Info bar: coords + distance ──
+    _hq_lat_d = st.session_state.get("hq_lat")
+    _hq_lon_d = st.session_state.get("hq_lon")
+    _ms_lat_d = st.session_state.get("map_lat")
+    _ms_lon_d = st.session_state.get("map_lon")
+
+    _info_parts = []
+    if _ms_lat_d is not None:
+        _info_parts.append(f"🔴 {_ms_lat_d:.4f}°, {_ms_lon_d:.4f}°")
+    if _hq_lat_d is not None:
+        _info_parts.append(f"🔵 {_hq_lat_d:.4f}°, {_hq_lon_d:.4f}°")
+    if _hq_lat_d is not None and _ms_lat_d is not None:
+        _phi1, _phi2 = math.radians(_hq_lat_d), math.radians(_ms_lat_d)
+        _a = (math.sin(math.radians(_ms_lat_d - _hq_lat_d) / 2) ** 2
+              + math.cos(_phi1) * math.cos(_phi2)
+              * math.sin(math.radians(_ms_lon_d - _hq_lon_d) / 2) ** 2)
+        _dist_km = round(2 * 6371 * math.asin(math.sqrt(_a)), 1)
+        _info_parts.append(f"<span style='color:{T['accent']};font-weight:600;'>📐 {_dist_km} km</span>")
+    if _info_parts:
         st.markdown(
             f"<div style='text-align:center;font-size:0.72rem;color:{_muted};"
-            f"margin:0.3rem 0 0.8rem;'>"
-            f"📍 {st.session_state['map_lat']:.5f}°, {st.session_state['map_lon']:.5f}°"
-            f"</div>",
+            f"margin:0.2rem 0 0.6rem;'>"
+            + " &nbsp;·&nbsp; ".join(_info_parts) + "</div>",
             unsafe_allow_html=True,
         )
+
+    # Rerun after all controls have rendered so their session state is committed
+    if _needs_rerun:
+        st.rerun()
 
 _map_section()
 
@@ -539,7 +606,7 @@ else:
         "weather":       weather,
         "time_of_day":   time_of_day,
         "altitude":      locals().get("alt",  1500),
-        "area":          locals().get("area", 5.0),
+        "area":          st.session_state.get("area", 5.0),
         "distance":      locals().get("dist", 5.0),
         "supply_weight": locals().get("sup",  0.0),
         "budget":        locals().get("bud",  500),
@@ -569,7 +636,7 @@ else:
     else:
         scored     = score_drones(passed, scenario)
         top        = scored[0]
-        num_drones = get_num_drones(locals().get("area", 5.0))
+        num_drones = get_num_drones(st.session_state.get("area", 5.0))
         total_cost = num_drones * top["cost"]
 
         # ── Build simulation payload ──
