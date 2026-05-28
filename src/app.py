@@ -1,3 +1,4 @@
+import math
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.graph_objects as go
@@ -8,16 +9,25 @@ from engine import apply_rules, score_drones, get_num_drones
 from weather import fetch_weather, fetch_weather_by_coords
 from map_component import render_map
 
-st.set_page_config(page_title="SAR Drone DSS", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="SAR Drone DSS", layout="wide", initial_sidebar_state="collapsed")
 
 # ── SESSION STATE ───────────────────────────────────────────────────────────────
 for _key, _val in [
     ("weather_select", "Clear"), ("tod_radio", "Day"),
     ("weather_info", None), ("weather_error", None),
+    ("altitude_auto", None),   # set from geocoding elevation
+    ("sidebar_open",  True),   # custom toggle
     ("theme", "light"),
+    # Persisted sidebar widget values (used when panel is hidden)
+    ("emergency", "Missing Person"),
+    ("area", 5.0),
+    ("dist", 5.0),
+    ("sup", 0.0),
+    ("bud", 500),
+    ("run", False),
+    ("city_input", ""),
     ("map_lat", None), ("map_lon", None), ("map_last_click", None),
     ("map_view_lat", None), ("map_view_lon", None), ("map_zoom", None),
-    ("sim_running", False), ("_pending_weather", None),
 ]:
     if _key not in st.session_state:
         st.session_state[_key] = _val
@@ -64,99 +74,123 @@ st.markdown(f"""
     box-sizing: border-box;
 }}
 
-/* ── Sidebar always visible ── */
-[data-testid="collapsedControl"],
-[data-testid="stSidebarCollapseButton"] {{ display: none !important; }}
-section[data-testid="stSidebar"] {{
-    display: block !important;
-    transform: translateX(0) !important;
-    min-width: 290px !important;
-    width: 290px !important;
+:root {{
+    color-scheme: {"dark" if _dark else "light"} !important;
 }}
-section[data-testid="stSidebar"] > div {{ width: 290px !important; }}
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
+[data-testid="stToolbar"], .main {{
+    background: {T['bg']} !important;
+    color: {T['text']} !important;
+}}
+
+body, button, input, textarea, select {{
+    color: {T['text']} !important;
+}}
+
+/* ── Hide native Streamlit sidebar entirely (we use a column panel instead) ── */
+section[data-testid="stSidebar"],
+[data-testid="stSidebarCollapseButton"],
+[data-testid="collapsedControl"] {{
+    display: none !important;
+}}
 
 /* ── App chrome ── */
 .stApp {{
     background: {T['bg']} !important;
+    color: {T['text']} !important;
     min-height: 100vh;
 }}
 #MainMenu, footer, header {{ visibility: hidden; }}
 .block-container {{
-    padding-top: 1.5rem !important;
+    padding-top: 1.25rem !important;
     padding-bottom: 3rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
 }}
 
-/* ── Sidebar panel ── */
-[data-testid="stSidebar"] {{
-    background: {T['surface']} !important;
-    border-right: 1px solid {T['border']} !important;
+/* ── Custom panel column (left sidebar replacement) ── */
+.sar-panel {{
+    background: {T['surface']};
+    border: 1px solid {T['border']};
+    border-radius: 12px;
+    padding: 0.75rem 0.85rem 1rem;
+    min-height: calc(100vh - 3.5rem);
+    overflow-y: auto;
 }}
-[data-testid="stSidebar"] * {{ color: {T['text']} !important; }}
-[data-testid="stSidebar"] hr {{
-    border-color: {T['border']} !important;
-    margin: 0.6rem 0 !important;
+.sar-panel hr {{
+    border: none;
+    border-top: 1px solid {T['border']};
+    margin: 0.6rem 0;
 }}
 
-/* Sidebar inputs */
-[data-testid="stSidebar"] [data-baseweb="select"] > div {{
+/* Panel inputs */
+.sar-panel [data-baseweb="select"] > div {{
     background: {T['surface2']} !important;
     border: 1px solid {T['border']} !important;
+    color: {T['text']} !important;
     border-radius: 8px !important;
     box-shadow: none !important;
 }}
-[data-testid="stSidebar"] [data-baseweb="select"] * {{ color: {T['text']} !important; }}
-[data-testid="stSidebar"] li {{
+.sar-panel [data-baseweb="select"] span,
+.sar-panel [data-baseweb="select"] input,
+.sar-panel [data-baseweb="select"] [role="combobox"] {{
+    color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
+}}
+.sar-panel [data-baseweb="select"] svg {{
+    color: {T['muted']} !important;
+    fill: {T['muted']} !important;
+}}
+.sar-panel li {{
     color: {T['text']} !important;
     background: {T['surface']} !important;
 }}
-[data-testid="stSidebar"] li:hover {{
+.sar-panel li:hover {{
     background: {T['surface2']} !important;
 }}
-[data-testid="stSidebar"] .stTextInput input {{
+.sar-panel .stTextInput input {{
     background: {T['surface2']} !important;
     border: 1px solid {T['border']} !important;
     color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
     border-radius: 8px !important;
     box-shadow: none !important;
     transition: border-color 0.15s;
 }}
-[data-testid="stSidebar"] .stTextInput input::placeholder {{
-    color: #8B949E !important;
+.sar-panel .stTextInput input::placeholder {{
+    color: {T['muted']} !important;
+    -webkit-text-fill-color: {T['muted']} !important;
     opacity: 1 !important;
 }}
-[data-testid="stSidebar"] .stTextInput input:focus {{
+.sar-panel .stTextInput input:focus {{
     border-color: {T['accent']} !important;
     box-shadow: 0 0 0 3px {T['accent_bg']} !important;
     outline: none;
 }}
-
-/* Slider */
-[data-testid="stSidebar"] .stSlider [data-baseweb="thumb"] {{
+.sar-panel .stSlider [data-baseweb="thumb"] {{
     background: {T['accent']} !important;
     box-shadow: none !important;
-    width: 16px !important;
-    height: 16px !important;
+    width: 16px !important; height: 16px !important;
     border: 2px solid {T['surface']} !important;
 }}
-[data-testid="stSidebar"] .stSlider [data-baseweb="track"] {{
-    background: {T['border']} !important;
-    height: 4px !important;
+.sar-panel .stSlider [data-baseweb="track"] {{
+    background: {T['border']} !important; height: 4px !important;
 }}
-[data-testid="stSidebar"] .stSlider [data-baseweb="track-fill"] {{
+.sar-panel .stSlider [data-baseweb="track-fill"] {{
     background: {T['accent']} !important;
 }}
-
-/* Radio pills */
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {{
+.sar-panel .stRadio div[role="radiogroup"] label {{
     background: {T['surface2']};
     border: 1px solid {T['border']};
+    color: {T['text']} !important;
     border-radius: 8px;
     padding: 5px 16px;
     margin: 3px 2px;
     transition: all 0.15s;
     font-size: 0.85rem;
 }}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {{
+.sar-panel .stRadio div[role="radiogroup"] label:hover {{
     border-color: {T['accent']};
     background: {T['accent_bg']};
 }}
@@ -240,8 +274,33 @@ div.stButton.theme-toggle > button:hover {{
 }}
 
 /* General text */
-.stMarkdown p, .stMarkdown span, p {{
+.stMarkdown, .stMarkdown p, .stMarkdown div,
+label, div[data-testid="stWidgetLabel"], div[data-testid="stWidgetLabel"] *,
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *,
+[data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] *,
+[data-testid="stText"], [data-testid="stText"] * {{
     color: {T['text']} !important;
+}}
+
+.st-emotion-cache-ue6h4q,
+.st-emotion-cache-16idsys,
+.st-emotion-cache-1fttcpj,
+.st-emotion-cache-10trblm,
+.st-emotion-cache-183lzff {{
+    color: {T['text']} !important;
+}}
+
+input, textarea, [contenteditable="true"] {{
+    background: {T['surface2']} !important;
+    color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
+    caret-color: {T['accent']} !important;
+}}
+
+input::placeholder, textarea::placeholder {{
+    color: {T['muted']} !important;
+    -webkit-text-fill-color: {T['muted']} !important;
+    opacity: 1 !important;
 }}
 
 /* Scrollbar */
@@ -255,16 +314,22 @@ div.stButton.theme-toggle > button:hover {{
 /* Spinner */
 .stSpinner > div {{ border-top-color: {T['accent']} !important; }}
 
-/* Form input hint — hidden until user types (placeholder disappears) */
-[data-testid="InputInstructions"] span {{ display: none !important; }}
-[data-testid="InputInstructions"] {{ display: none !important; }}
-[data-testid="InputInstructions"]::after {{
-    content: "Press Enter";
-    font-size: 0.72rem;
-    color: {T['muted']};
+/* ── Secondary button style for collapse / theme toggles ── */
+div[data-testid="stHorizontalBlock"] div.stButton > button {{
+    background: {T['surface2']} !important;
+    color: {T['muted']} !important;
+    border: 1px solid {T['border']} !important;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    padding: 0.4rem 0.5rem !important;
+    box-shadow: none !important;
 }}
-[data-baseweb="input"]:has(input:not(:placeholder-shown)) ~ [data-testid="InputInstructions"] {{
-    display: block !important;
+div[data-testid="stHorizontalBlock"] div.stButton > button:hover {{
+    border-color: {T['accent']} !important;
+    color: {T['accent']} !important;
+    background: {T['accent_bg']} !important;
+    transform: none !important;
+    box-shadow: none !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -288,160 +353,270 @@ components.html("""
 </script>
 """, height=0)
 
-# ── SIDEBAR ─────────────────────────────────────────────────────────────────────
-with st.sidebar:
+# ── ENTER KEY → BUTTON CLICK ────────────────────────────────────────────────────
+components.html("""
+<script>
+(function () {
+    var doc = window.parent.document;
+    doc.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && doc.activeElement && doc.activeElement.tagName === 'INPUT') {
+            e.preventDefault();
+            var btn = doc.querySelector('[data-testid="stFormSubmitButton"] button');
+            if (btn) {
+                btn.focus();
+                btn.click();
+            }
+        }
+    }, true);
+})();
+</script>
+""", height=0)
 
-    # ── Logo / title ──
-    st.markdown(f"""
-    <div style="padding: 1.25rem 0.25rem 0.5rem; display:flex; align-items:center; gap:0.75rem;">
-        <div style="width:36px;height:36px;border-radius:9px;
-                    background:{T['accent_bg']};border:1px solid {T['accent_border']};
-                    display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">
-            🚁
+# ── LAYOUT ──────────────────────────────────────────────────────────────────────
+_sb_open = st.session_state["sidebar_open"]
+run      = st.session_state["run"]
+
+if _sb_open:
+    _col_sb, _col_main = st.columns([1, 3], gap="small")
+else:
+    _col_main = st.container()
+
+# ── SIDEBAR PANEL (column) ───────────────────────────────────────────────────────
+if _sb_open:
+    with _col_sb:
+        # JS: add CSS class to this column element so .sar-panel styles apply
+        components.html("""<script>
+        (function(){
+            function tag(){
+                var fs=window.parent.document.querySelectorAll('iframe');
+                for(var i=0;i<fs.length;i++){
+                    try{if(fs[i].contentWindow===window){
+                        var c=fs[i].closest('[data-testid="stColumn"]');
+                        if(c){c.classList.add('sar-panel');} return;
+                    }}catch(e){}
+                }
+            }
+            tag(); setTimeout(tag,80); setTimeout(tag,300);
+        })();
+        </script>""", height=1, scrolling=False)
+
+        # ── Section label helper ──
+        def slabel(txt):
+            st.markdown(
+                f"<p style='color:{T['muted']};font-size:0.7rem;font-weight:600;"
+                f"letter-spacing:0.8px;text-transform:uppercase;margin:0.75rem 0 0.25rem;'>{txt}</p>",
+                unsafe_allow_html=True,
+            )
+
+        # Logo
+        st.markdown(f"""
+        <div style="padding:0.5rem 0.1rem 0.5rem;display:flex;align-items:center;gap:0.75rem;">
+            <div style="width:36px;height:36px;border-radius:9px;
+                        background:{T['accent_bg']};border:1px solid {T['accent_border']};
+                        display:flex;align-items:center;justify-content:center;
+                        font-size:1.2rem;flex-shrink:0;">🚁</div>
+            <div>
+                <div style="font-weight:800;font-size:0.95rem;color:{T['text']};
+                            letter-spacing:-0.2px;">SAR Drone DSS</div>
+                <div style="font-size:0.7rem;color:{T['muted']};margin-top:1px;">
+                    Decision Support System</div>
+            </div>
         </div>
-        <div>
-            <div style="font-weight:800;font-size:0.95rem;color:{T['text']};letter-spacing:-0.2px;">SAR Drone DSS</div>
-            <div style="font-size:0.7rem;color:{T['muted']};margin-top:1px;">Decision Support System</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+        st.markdown("---")
 
-    st.markdown("---")
+        slabel("Emergency Type")
+        emergency = st.selectbox("Emergency", ["Missing Person", "Injured Person",
+                                               "Altitude Sickness", "Supply Delivery"],
+                                 key="emergency", label_visibility="collapsed")
 
-    # ── Section label helper ──
-    def slabel(txt):
+        slabel("Mission Location")
+        with st.form("weather_form", clear_on_submit=False):
+            city_input   = st.text_input("loc", key="city_input", placeholder="e.g. Stockholm, Kiruna…", label_visibility="collapsed")
+            fetch_clicked = st.form_submit_button("🌐  Fetch Live Weather", use_container_width=True)
+
+
+        if fetch_clicked:
+            if city_input.strip():
+                try:
+                    with st.spinner("Fetching weather…"):
+                        _info = fetch_weather(city_input.strip())
+                    st.session_state["weather_select"] = _info["condition"]
+                    st.session_state["tod_radio"]      = _info["time_of_day"]
+                    st.session_state["weather_info"]   = _info
+                    st.session_state["altitude_auto"]  = _info.get("elevation", 0)
+                    st.session_state["weather_error"]  = None
+                    # Move map pin to the geocoded city location
+                    st.session_state["map_lat"]      = _info["lat"]
+                    st.session_state["map_lon"]      = _info["lon"]
+                    st.session_state["map_view_lat"] = _info["lat"]
+                    st.session_state["map_view_lon"] = _info["lon"]
+                    st.session_state["map_zoom"]     = 10
+                except Exception as _e:
+                    st.session_state["weather_error"] = str(_e)
+                    st.session_state["weather_info"]  = None
+            else:
+                st.session_state["weather_error"] = "Enter a city name first."
+
+        if st.session_state["weather_info"]:
+            _wi = st.session_state["weather_info"]
+            st.markdown(
+                f"<div style='background:{T['green_bg']};border:1px solid {T['green_border']};"
+                f"border-radius:8px;padding:0.5rem 0.75rem;margin:0.35rem 0;font-size:0.78rem;'>"
+                f"<span style='color:{T['green']};font-weight:600;'>📍 {_wi['location']}</span><br>"
+                f"<span style='color:{T['muted']};'>💨 {_wi['wind_speed']} m/s · "
+                f"<b style='color:{T['text']};'>{_wi['condition']}</b> · {_wi['time_of_day']}"
+                f"</span></div>", unsafe_allow_html=True,
+            )
+        elif st.session_state["weather_error"]:
+            st.markdown(
+                f"<div style='background:{T['red_bg']};border:1px solid {T['red_border']};"
+                f"border-radius:8px;padding:0.5rem 0.75rem;margin:0.35rem 0;font-size:0.78rem;"
+                f"color:{T['red']};'>⚠ {st.session_state['weather_error']}</div>",
+                unsafe_allow_html=True,
+            )
+
+        # Weather Condition — read-only, set by API fetch
+        _wc_val = st.session_state.get("weather_select", "Clear")
+        _wc_has_data = st.session_state.get("weather_info") is not None
+        _wc_color = T["green"] if _wc_has_data else T["muted"]
+        _wc_note  = "from location" if _wc_has_data else "fetch a location above"
+        weather   = _wc_val
+        slabel("Weather Condition")
         st.markdown(
-            f"<p style='color:{T['muted']};font-size:0.7rem;font-weight:600;"
-            f"letter-spacing:0.8px;text-transform:uppercase;margin:0.75rem 0 0.25rem;'>{txt}</p>",
+            f"<div style='background:{T['surface2']};border:1px solid {T['border']};"
+            f"border-radius:8px;padding:0.5rem 0.75rem;margin-bottom:0.25rem;"
+            f"display:flex;align-items:center;justify-content:space-between;'>"
+            f"<span style='font-size:1rem;font-weight:700;color:{T['text']};'>{_wc_val}</span>"
+            f"<span style='font-size:0.7rem;color:{_wc_color};font-weight:500;'>{_wc_note}</span>"
+            f"</div>",
             unsafe_allow_html=True,
         )
 
-    slabel("Emergency Type")
-    emergency = st.selectbox("et", ["Missing Person", "Injured Person", "Altitude Sickness", "Supply Delivery"],
-                             label_visibility="collapsed")
+        # Time of Day — read-only, set by API fetch
+        _tod_val    = st.session_state.get("tod_radio", "Day")
+        _tod_icon   = "☀️" if _tod_val == "Day" else "🌙"
+        _tod_color  = T["green"] if _wc_has_data else T["muted"]
+        _tod_note   = "from location" if _wc_has_data else "fetch a location above"
+        time_of_day = _tod_val
+        slabel("Time of Day")
+        st.markdown(
+            f"<div style='background:{T['surface2']};border:1px solid {T['border']};"
+            f"border-radius:8px;padding:0.5rem 0.75rem;margin-bottom:0.25rem;"
+            f"display:flex;align-items:center;justify-content:space-between;'>"
+            f"<span style='font-size:1rem;font-weight:700;color:{T['text']};'>{_tod_icon} {_tod_val}</span>"
+            f"<span style='font-size:0.7rem;color:{_tod_color};font-weight:500;'>{_tod_note}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
-    # ── Live weather ──
-    slabel("Mission Location")
-    with st.form("weather_form", clear_on_submit=False):
-        city_input   = st.text_input("loc", placeholder="e.g. Stockholm, Kiruna…", label_visibility="collapsed")
-        fetch_clicked = st.form_submit_button("🌐  Fetch Live Weather", use_container_width=True)
+        st.markdown("---")
 
-    if fetch_clicked:
-        if city_input.strip():
-            try:
-                with st.spinner("Fetching weather…"):
-                    _info = fetch_weather(city_input.strip())
-                st.session_state["weather_select"] = _info["condition"]
-                st.session_state["tod_radio"]      = _info["time_of_day"]
-                st.session_state["weather_info"]   = _info
-                st.session_state["weather_error"]  = None
-                # Move map pin to the geocoded city location
-                st.session_state["map_lat"]      = _info["lat"]
-                st.session_state["map_lon"]      = _info["lon"]
-                st.session_state["map_view_lat"] = _info["lat"]
-                st.session_state["map_view_lon"] = _info["lon"]
-                st.session_state["map_zoom"]     = 10
-            except Exception as _e:
-                st.session_state["weather_error"] = str(_e)
-                st.session_state["weather_info"]  = None
+        # Altitude: auto from geocoding, not a user slider
+        _alt_val = st.session_state.get("altitude_auto")
+        if _alt_val is not None:
+            _alt_display = f"{_alt_val:,} m"
+            _alt_note    = "from location"
+            _alt_color   = T["green"]
         else:
-            st.session_state["weather_error"] = "Enter a city name first."
+            _alt_val     = 1500
+            _alt_display = "—"
+            _alt_note    = "set a location above"
+            _alt_color   = T["muted"]
 
-    if st.session_state["weather_info"]:
-        _wi = st.session_state["weather_info"]
+        slabel("Altitude (m)")
         st.markdown(
-            f"<div style='background:{T['green_bg']};border:1px solid {T['green_border']};"
-            f"border-radius:8px;padding:0.5rem 0.75rem;margin:0.35rem 0;font-size:0.78rem;'>"
-            f"<span style='color:{T['green']};font-weight:600;'>📍 {_wi['location']}</span><br>"
-            f"<span style='color:{T['muted']};'>💨 {_wi['wind_speed']} m/s · "
-            f"<b style='color:{T['text']};'>{_wi['condition']}</b> · {_wi['time_of_day']}</span></div>",
-            unsafe_allow_html=True,
+            f"<div style='background:{T['surface2']};border:1px solid {T['border']};"
+            f"border-radius:8px;padding:0.5rem 0.75rem;margin-bottom:0.25rem;"
+            f"display:flex;align-items:center;justify-content:space-between;'>"
+            f"<span style='font-size:1rem;font-weight:700;color:{T['text']};'>{_alt_display}</span>"
+            f"<span style='font-size:0.7rem;color:{_alt_color};font-weight:500;'>{_alt_note}</span>"
+            f"</div>", unsafe_allow_html=True,
         )
-    elif st.session_state["weather_error"]:
-        st.markdown(
-            f"<div style='background:{T['red_bg']};border:1px solid {T['red_border']};"
-            f"border-radius:8px;padding:0.5rem 0.75rem;margin:0.35rem 0;font-size:0.78rem;"
-            f"color:{T['red']};'>⚠ {st.session_state['weather_error']}</div>",
-            unsafe_allow_html=True,
-        )
+        alt = _alt_val
 
-    slabel("Weather Condition")
-    weather = st.session_state["weather_select"]
-    _cond_icon = {"Clear": "☀️", "Windy": "💨", "Storm": "⛈️", "Blizzard": "🌨️"}.get(weather, "")
-    st.markdown(
-        f"<div style='background:{T['surface2']};border:1px solid {T['border']};"
-        f"border-radius:8px;padding:0.5rem 0.85rem;font-size:0.875rem;"
-        f"color:{T['text']};font-weight:500;'>{_cond_icon} {weather}</div>",
-        unsafe_allow_html=True,
-    )
+        slabel("Area to Cover (km²)")
+        area = st.slider("Area", 0.5, 30.0, 5.0, 0.5, key="area", label_visibility="collapsed")
 
-    slabel("Time of Day")
+        _dist_estimate = round(min(25.0, max(0.5, math.sqrt(area) * 1.5)), 1)
+        slabel(f"Distance (km) &nbsp;·&nbsp; <span style='color:{T['muted']};font-weight:400;"
+               f"font-size:0.68rem;'>~{_dist_estimate} km suggested</span>")
+        dist = st.slider("Distance", 0.5, 25.0, 5.0, 0.5, key="dist", label_visibility="collapsed")
+
+        slabel("Supply Weight (kg)")
+        sup = st.slider("Supply", 0.0, 30.0, 0.0, 0.5, key="sup", label_visibility="collapsed")
+
+        slabel("Budget per Drone (€)")
+        bud = st.slider("Budget", 100, 1000, 500, 25, key="bud", label_visibility="collapsed")
+
+        st.markdown("---")
+
+        if st.button("⚡  Run DSS Simulation", key="run_btn", use_container_width=True):
+            st.session_state["run"] = True
+            st.rerun()
+
+        _c1, _c2 = st.columns(2)
+        with _c1:
+            _toggle_label = "☀️ Light" if _dark else "🌙 Dark"
+            if st.button(_toggle_label, key="theme_toggle", use_container_width=True):
+                st.session_state["theme"] = "light" if _dark else "dark"
+                st.rerun()
+        with _c2:
+            if st.button("← Hide", key="hide_panel", use_container_width=True):
+                st.session_state["sidebar_open"] = False
+                st.rerun()
+
+else:
+    # Panel is hidden — read all widget values from session state
+    emergency   = st.session_state["emergency"]
+    weather     = st.session_state["weather_select"]
     time_of_day = st.session_state["tod_radio"]
-    _tod_icon = "🌙" if time_of_day == "Night" else "☀️"
-    st.markdown(
-        f"<div style='background:{T['surface2']};border:1px solid {T['border']};"
-        f"border-radius:8px;padding:0.5rem 0.85rem;font-size:0.875rem;"
-        f"color:{T['text']};font-weight:500;'>{_tod_icon} {time_of_day}</div>",
-        unsafe_allow_html=True,
-    )
+    alt         = st.session_state.get("altitude_auto") or 1500
+    area        = st.session_state["area"]
+    dist        = st.session_state["dist"]
+    sup         = st.session_state["sup"]
+    bud         = st.session_state["bud"]
 
-    st.markdown("---")
+# ── MAIN CONTENT — enter column context ─────────────────────────────────────────
+# Using __enter__ so the 1000-line simulation block below needs no re-indenting
+_col_main.__enter__()
 
-    for label, key, lo, hi, default, step in [
-        ("Altitude (m)",         "alt",  100,  5000, 1500, 100),
-        ("Area to Cover (km²)",  "area", 0.5,  30.0, 5.0,  0.5),
-        ("Distance (km)",        "dist", 0.5,  25.0, 5.0,  0.5),
-        ("Supply Weight (kg)",   "sup",  0.0,  30.0, 0.0,  0.5),
-        ("Budget per Drone (€)", "bud",  100,  1000, 500,  25),
-    ]:
-        slabel(label)
-        locals()[key] = st.slider(key, lo, hi, default, step, label_visibility="collapsed")
+# ── HEADER ──
+if not _sb_open:
+    _hcol_btn, _hcol_hdr = st.columns([1, 11])
+    with _hcol_btn:
+        if st.button("☰", key="open_panel", help="Open mission parameters"):
+            st.session_state["sidebar_open"] = True
+            st.rerun()
+    _header_area = _hcol_hdr
+else:
+    _header_area = st.container()
 
-    st.markdown("---")
-    if st.button("⚡  Run DSS Simulation", use_container_width=True):
-        st.session_state["sim_running"] = True
-    run = st.session_state["sim_running"]
-
-    # ── Theme toggle ──
-    st.markdown("<div style='margin-top:0.5rem;'>", unsafe_allow_html=True)
-    _toggle_label = "☀️  Light mode" if _dark else "🌙  Dark mode"
-    if st.button(_toggle_label, key="theme_toggle", use_container_width=True):
-        st.session_state["theme"] = "light" if _dark else "dark"
-        st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ── HEADER ──────────────────────────────────────────────────────────────────────
-st.markdown(f"""
+with _header_area:
+    _new_mission_btn = ""
+    if run:
+        _new_mission_btn = f"""
+        <span style="cursor:pointer;" id="nm-placeholder"></span>"""
+    st.markdown(f"""
 <div style="
-    background:{T['surface']};
-    border:1px solid {T['border']};
-    border-radius:14px;
-    padding:1.25rem 1.75rem;
-    margin-bottom:1.25rem;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:1rem;
-">
+    background:{T['surface']};border:1px solid {T['border']};border-radius:14px;
+    padding:1rem 1.5rem;margin-bottom:1rem;
+    display:flex;align-items:center;justify-content:space-between;gap:1rem;">
     <div>
-        <div style="font-size:0.7rem;font-weight:600;letter-spacing:1px;
-                    text-transform:uppercase;color:{T['muted']};margin-bottom:0.3rem;">
-            BTH · DV2573 · Group 2 · Spring 2026
-        </div>
-        <div style="font-size:1.5rem;font-weight:800;color:{T['text']};
-                    letter-spacing:-0.5px;margin-bottom:0.2rem;">
-            SAR Drone Selection DSS
-        </div>
-        <div style="font-size:0.85rem;color:{T['muted']};">
-            Intelligent Decision Support System for Search & Rescue Operations
-        </div>
+        <div style="font-size:0.68rem;font-weight:600;letter-spacing:1px;
+                    text-transform:uppercase;color:{T['muted']};margin-bottom:0.25rem;">
+            BTH · DV2573 · Group 2 · Spring 2026</div>
+        <div style="font-size:1.4rem;font-weight:800;color:{T['text']};
+                    letter-spacing:-0.5px;margin-bottom:0.15rem;">
+            SAR Drone Selection DSS</div>
+        <div style="font-size:0.83rem;color:{T['muted']};">
+            Intelligent Decision Support System for Search &amp; Rescue Operations</div>
     </div>
-    <div style="display:flex;gap:0.5rem;flex-shrink:0;">
+    <div style="display:flex;gap:0.5rem;flex-shrink:0;align-items:center;">
         <span style="background:{T['green_bg']};border:1px solid {T['green_border']};
                      color:{T['green']};font-size:0.7rem;font-weight:600;
                      padding:4px 10px;border-radius:20px;letter-spacing:0.3px;">
-            ● System Ready
-        </span>
+            ● System Ready</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -486,6 +661,52 @@ def _map_section():
         )
 
 _map_section()
+
+# ── MAP ──────────────────────────────────────────────────────────────────────────
+@st.fragment
+def _map_section():
+    _d      = st.session_state.get("theme", "light") == "dark"
+    _border = "#30363D" if _d else "#E2E8F0"
+    _muted  = "#8B949E" if _d else "#64748B"
+
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;gap:0.7rem;margin:0.9rem 0 0.5rem;">
+        <div style="height:1px;flex:1;background:{_border};"></div>
+        <div style="font-size:0.68rem;font-weight:600;letter-spacing:1px;
+                    text-transform:uppercase;color:{_muted};">Mission Location</div>
+        <div style="height:1px;flex:1;background:{_border};"></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _result = render_map(dark=_d)
+
+    if _result:
+        st.session_state["map_lat"] = _result["lat"]
+        st.session_state["map_lon"] = _result["lon"]
+        with st.spinner("Fetching weather for location…"):
+            try:
+                _w = fetch_weather_by_coords(_result["lat"], _result["lon"])
+                st.session_state["_pending_weather"] = _w
+                st.session_state["weather_error"]    = None
+            except Exception as _e:
+                st.session_state["weather_error"] = str(_e)
+        st.rerun(scope="app")
+
+    if st.session_state["map_lat"] is not None:
+        st.markdown(
+            f"<div style='text-align:center;font-size:0.72rem;color:{_muted};"
+            f"margin:0.3rem 0 0.8rem;'>"
+            f"📍 {st.session_state['map_lat']:.5f}°, {st.session_state['map_lon']:.5f}°"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+_map_section()
+
+if run:
+    if st.button("↺  New Mission", key="new_mission"):
+        st.session_state["run"] = False
+        st.rerun()
 
 # ── WELCOME ─────────────────────────────────────────────────────────────────────
 if not run:
@@ -539,7 +760,7 @@ else:
         "emergency":     emergency,
         "weather":       weather,
         "time_of_day":   time_of_day,
-        "altitude":      locals().get("alt",  1500),
+        "altitude":      alt,                          # from geocoding elevation
         "area":          locals().get("area", 5.0),
         "distance":      locals().get("dist", 5.0),
         "supply_weight": locals().get("sup",  0.0),
