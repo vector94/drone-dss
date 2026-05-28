@@ -271,7 +271,7 @@ div.stButton.theme-toggle > button:hover {{
 .welcome-card-wrapper {{
     position: relative;
     border-radius: 14px;
-    padding: 2px;
+    padding: 4px; /* Wider trail */
     height: 100%;
     overflow: hidden;
     transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.4s ease;
@@ -285,13 +285,7 @@ div.stButton.theme-toggle > button:hover {{
     left: -50%;
     width: 200%;
     height: 200%;
-    background: conic-gradient(
-        from 0deg,
-        transparent 0%,
-        transparent 60%,
-        {T['accent']} 100%
-    );
-    animation: rotate-neon 2.5s linear infinite;
+    animation: rotate-neon 2s linear infinite;
     opacity: 0;
     transition: opacity 0.4s ease;
     z-index: 0;
@@ -299,8 +293,16 @@ div.stButton.theme-toggle > button:hover {{
 
 .welcome-card-wrapper:hover {{
     transform: translateY(-5px);
-    box-shadow: 0 12px 30px {T['accent_bg']};
 }}
+
+.welcome-card-wrapper.neon-0::before {{ background: conic-gradient(from 0deg, transparent 0%, transparent 50%, #3B82F6 80%, #ffffff 100%); }}
+.welcome-card-wrapper.neon-0:hover {{ box-shadow: 0 12px 30px rgba(59,130,246,0.25); }}
+
+.welcome-card-wrapper.neon-1::before {{ background: conic-gradient(from 0deg, transparent 0%, transparent 50%, #10B981 80%, #ffffff 100%); }}
+.welcome-card-wrapper.neon-1:hover {{ box-shadow: 0 12px 30px rgba(16,185,129,0.25); }}
+
+.welcome-card-wrapper.neon-2::before {{ background: conic-gradient(from 0deg, transparent 0%, transparent 50%, #8B5CF6 80%, #ffffff 100%); }}
+.welcome-card-wrapper.neon-2:hover {{ box-shadow: 0 12px 30px rgba(139,92,246,0.25); }}
 
 .welcome-card-wrapper:hover::before {{
     opacity: 1;
@@ -463,7 +465,6 @@ with st.sidebar:
         st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ── HEADER ──────────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div style="
     background:{T['surface']};
@@ -477,10 +478,6 @@ st.markdown(f"""
     gap:1rem;
 ">
     <div>
-        <div style="font-size:0.7rem;font-weight:600;letter-spacing:1px;
-                    text-transform:uppercase;color:{T['muted']};margin-bottom:0.3rem;">
-            BTH · DV2573 · Group 2 · Spring 2026
-        </div>
         <div style="font-size:1.5rem;font-weight:800;color:{T['text']};
                     letter-spacing:-0.5px;margin-bottom:0.2rem;">
             SAR Drone Selection DSS
@@ -490,14 +487,54 @@ st.markdown(f"""
         </div>
     </div>
     <div style="display:flex;gap:0.5rem;flex-shrink:0;">
-        <span style="background:{T['green_bg']};border:1px solid {T['green_border']};
+        <button id="system-status-badge"
+                style="background:{T['green_bg']};border:1px solid {T['green_border']};
                      color:{T['green']};font-size:0.7rem;font-weight:600;
-                     padding:4px 10px;border-radius:20px;letter-spacing:0.3px;">
+                     padding:4px 10px;border-radius:20px;letter-spacing:0.3px;
+                     cursor:pointer; outline:none; transition:all 0.2s;">
             ● System Ready
-        </span>
+        </button>
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+components.html(f"""
+<script>
+(function() {{
+    var doc = window.parent.document;
+    var badge = doc.getElementById('system-status-badge');
+    
+    if (badge && !badge.hasAttribute('data-bound')) {{
+        badge.setAttribute('data-bound', 'true');
+        
+        var isUnavail = window.parent.sessionStorage.getItem('sys_unavail') === 'true';
+        if (isUnavail) {{
+            badge.innerText = '● System Unavailable';
+            badge.style.background = "{T['red_bg']}";
+            badge.style.borderColor = "{T['red_border']}";
+            badge.style.color = "{T['red']}";
+        }}
+        
+        badge.addEventListener('click', function() {{
+            var isReady = this.innerText.includes('Ready');
+            if (isReady) {{
+                this.innerText = '● System Unavailable';
+                this.style.background = "{T['red_bg']}";
+                this.style.borderColor = "{T['red_border']}";
+                this.style.color = "{T['red']}";
+                window.parent.sessionStorage.setItem('sys_unavail', 'true');
+            }} else {{
+                this.innerText = '● System Ready';
+                this.style.background = "{T['green_bg']}";
+                this.style.borderColor = "{T['green_border']}";
+                this.style.color = "{T['green']}";
+                window.parent.sessionStorage.setItem('sys_unavail', 'false');
+            }}
+        }});
+    }}
+}})();
+</script>
+""", height=0)
 
 # ── MAP ──────────────────────────────────────────────────────────────────────────
 st.markdown(f"""
@@ -545,10 +582,10 @@ if not run:
          "Remaining drones are scored across 8 criteria. Weights shift dynamically — blizzard boosts wind score, night ops boost camera score."),
     ]
 
-    for col, (icon, title, desc) in zip([col1, col2, col3], _cards):
+    for idx, (col, (icon, title, desc)) in enumerate(zip([col1, col2, col3], _cards)):
         with col:
             st.markdown(f"""
-            <div class="welcome-card-wrapper">
+            <div class="welcome-card-wrapper neon-{idx}">
                 <div class="welcome-card-content" style="
                     background:{T['surface']};
                     padding:1.5rem;
