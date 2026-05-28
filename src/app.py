@@ -226,6 +226,27 @@ div.stButton.theme-toggle > button:hover {{
     background: {T['accent_bg']} !important;
 }}
 
+/* Collapsed menu button */
+div.st-key-open_panel button {{
+    background: {T['surface2']} !important;
+    color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
+    border: 1px solid {T['border']} !important;
+    box-shadow: none !important;
+}}
+div.st-key-open_panel button:hover {{
+    background: {T['accent_bg']} !important;
+    color: {T['accent']} !important;
+    -webkit-text-fill-color: {T['accent']} !important;
+    border-color: {T['accent']} !important;
+    transform: none !important;
+    box-shadow: none !important;
+}}
+div.st-key-open_panel button * {{
+    color: inherit !important;
+    -webkit-text-fill-color: inherit !important;
+}}
+
 /* Expander */
 [data-testid="stExpander"] {{
     background: {T['surface']} !important;
