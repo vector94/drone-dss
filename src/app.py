@@ -28,12 +28,13 @@ for _key, _val in [
     ("city_input", ""),
     ("map_lat", None), ("map_lon", None), ("map_last_click", None),
     ("map_view_lat", None), ("map_view_lon", None), ("map_zoom", None),
+    ("sim_running", False), ("_pending_weather", None),
 ]:
     if _key not in st.session_state:
         st.session_state[_key] = _val
 
 # ── APPLY PENDING WEATHER UPDATE (must run before any widgets render) ────────────
-if st.session_state["_pending_weather"]:
+if st.session_state.get("_pending_weather"):
     _upd = st.session_state["_pending_weather"]
     st.session_state["_pending_weather"] = None
     st.session_state["weather_select"]   = _upd.get("condition", "Clear")
@@ -620,47 +621,6 @@ with _header_area:
     </div>
 </div>
 """, unsafe_allow_html=True)
-
-# ── MAP ──────────────────────────────────────────────────────────────────────────
-@st.fragment
-def _map_section():
-    _d      = st.session_state.get("theme", "light") == "dark"
-    _border = "#30363D" if _d else "#E2E8F0"
-    _muted  = "#8B949E" if _d else "#64748B"
-
-    st.markdown(f"""
-    <div style="display:flex;align-items:center;gap:0.7rem;margin:0.9rem 0 0.5rem;">
-        <div style="height:1px;flex:1;background:{_border};"></div>
-        <div style="font-size:0.68rem;font-weight:600;letter-spacing:1px;
-                    text-transform:uppercase;color:{_muted};">Mission Location</div>
-        <div style="height:1px;flex:1;background:{_border};"></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    _result = render_map(dark=_d)
-
-    if _result:
-        st.session_state["map_lat"] = _result["lat"]
-        st.session_state["map_lon"] = _result["lon"]
-        with st.spinner("Fetching weather for location…"):
-            try:
-                _w = fetch_weather_by_coords(_result["lat"], _result["lon"])
-                st.session_state["_pending_weather"] = _w
-                st.session_state["weather_error"]    = None
-            except Exception as _e:
-                st.session_state["weather_error"] = str(_e)
-        st.rerun(scope="app")
-
-    if st.session_state["map_lat"] is not None:
-        st.markdown(
-            f"<div style='text-align:center;font-size:0.72rem;color:{_muted};"
-            f"margin:0.3rem 0 0.8rem;'>"
-            f"📍 {st.session_state['map_lat']:.5f}°, {st.session_state['map_lon']:.5f}°"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-_map_section()
 
 # ── MAP ──────────────────────────────────────────────────────────────────────────
 @st.fragment
