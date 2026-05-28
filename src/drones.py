@@ -20,7 +20,7 @@ def _infer_airframe(row) -> str:
 
 def _load_drones(path: str) -> list[dict]:
     df = pd.read_csv(path)
-    df = df[df["available"].astype(str).str.lower() == "true"].reset_index(drop=True)
+    df = df.reset_index(drop=True)
 
     records = []
     for _, row in df.iterrows():
@@ -35,6 +35,11 @@ def _load_drones(path: str) -> list[dict]:
             # Core fields used by engine.py and app.py
             "name":            row["drone_name"],
             "type":            _infer_airframe(row),
+            "available":       str(row.get("available", "true")).lower() == "true",
+            "in_mission":      str(row.get("in_mission", "false")).lower() == "true",
+            "units_in_inventory": int(row.get("units_in_inventory", 0)),
+            "temp_min":        float(row.get("temperature_tolerance_min_c", -20)),
+            "temp_max":        float(row.get("temperature_tolerance_max_c", 50)),
             "wind_resistance": float(row["wind_resistance_ms"]),
             "max_altitude":    int(row["altitude_capability_m"]),
             "battery_life":    int(row["battery_life_min"]),

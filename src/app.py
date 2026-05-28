@@ -353,7 +353,7 @@ with st.sidebar:
             f"<div style='background:{T['green_bg']};border:1px solid {T['green_border']};"
             f"border-radius:8px;padding:0.5rem 0.75rem;margin:0.35rem 0;font-size:0.78rem;'>"
             f"<span style='color:{T['green']};font-weight:600;'>📍 {_wi['location']}</span><br>"
-            f"<span style='color:{T['muted']};'>💨 {_wi['wind_speed']} m/s · "
+            f"<span style='color:{T['muted']};'>💨 {_wi['wind_speed']} m/s · 🌡️ {_wi['temperature']}°C · "
             f"<b style='color:{T['text']};'>{_wi['condition']}</b> · {_wi['time_of_day']}</span></div>",
             unsafe_allow_html=True,
         )
@@ -384,6 +384,9 @@ with st.sidebar:
         f"color:{T['text']};font-weight:500;'>{_tod_icon} {time_of_day}</div>",
         unsafe_allow_html=True,
     )
+
+    slabel("Environment")
+    dense_forest = st.checkbox("Dense Forest", value=False)
 
     st.markdown("---")
 
@@ -526,15 +529,27 @@ if not run:
 
 # ── SIMULATION ──────────────────────────────────────────────────────────────────
 else:
+    weather_info = st.session_state.get("weather_info")
+    if weather_info:
+        wind_speed = weather_info["wind_speed"]
+        temperature = weather_info["temperature"]
+    else:
+        wind_speed_map = {"Clear": 2.0, "Windy": 7.0, "Storm": 14.0, "Blizzard": 18.0}
+        wind_speed = wind_speed_map.get(weather, 5.0)
+        temperature = 20.0
+
     scenario = {
         "emergency":     emergency,
         "weather":       weather,
         "time_of_day":   time_of_day,
+        "wind_speed":    wind_speed,
+        "temperature":   temperature,
         "altitude":      locals().get("alt",  1500),
         "area":          locals().get("area", 5.0),
         "distance":      locals().get("dist", 5.0),
         "supply_weight": locals().get("sup",  0.0),
         "budget":        locals().get("bud",  500),
+        "dense_forest":  locals().get("dense_forest", False),
     }
 
     passed, eliminated = apply_rules(DRONES, scenario)
