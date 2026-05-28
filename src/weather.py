@@ -2,31 +2,34 @@ from __future__ import annotations
 
 import requests
 
-_GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+_GEOCODE_URL  = "https://geocoding-api.open-meteo.com/v1/search"
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 # Open-Meteo WMO weather code groups
-_SNOW_CODES = {71, 73, 75, 77, 85, 86}
+_SNOW_CODES  = {71, 73, 75, 77, 85, 86}
 _STORM_CODES = {95, 96, 99}
+
+_FORECAST_PARAMS = "wind_speed_10m,weather_code,is_day,temperature_2m"
 
 
 def fetch_weather(city: str) -> dict:
     """Fetch current weather for a city and map it to DSS condition categories.
 
     Returns:
-        dict with keys: condition, time_of_day, wind_speed, location
+        dict with keys: condition, time_of_day, wind_speed, temperature,
+                        elevation, location, lat, lon
     Raises:
         ValueError: city not found
         requests.HTTPError: API error
     """
-    lat, lon, display_name = _geocode(city)
+    lat, lon, display_name, elevation = _geocode(city)
 
     resp = requests.get(
         _FORECAST_URL,
         params={
-            "latitude": lat,
-            "longitude": lon,
-            "current": "wind_speed_10m,weather_code,is_day",
+            "latitude":        lat,
+            "longitude":       lon,
+            "current":         _FORECAST_PARAMS,
             "wind_speed_unit": "ms",
         },
         timeout=8,
@@ -34,21 +37,65 @@ def fetch_weather(city: str) -> dict:
     resp.raise_for_status()
     current = resp.json()["current"]
 
-    wind_speed = round(float(current["wind_speed_10m"]), 1)
+    wind_speed   = round(float(current["wind_speed_10m"]), 1)
     weather_code = int(current["weather_code"])
-    is_day = bool(current["is_day"])
+    is_day       = bool(current["is_day"])
+    temperature  = round(float(current["temperature_2m"]), 1)
 
     return {
-        "condition": _map_condition(wind_speed, weather_code),
+        "condition":   _map_condition(wind_speed, weather_code),
         "time_of_day": "Day" if is_day else "Night",
-        "wind_speed": wind_speed,
-        "location": display_name,
-        "lat": lat,
-        "lon": lon,
+        "wind_speed":  wind_speed,
+        "temperature": temperature,
+        "elevation":   elevation,
+        "location":    display_name,
+        "lat":         lat,
+        "lon":         lon,
     }
 
 
-def _geocode(city: str) -> tuple[float, float, str]:
+def fetch_weather_by_coords(lat: float, lon: float) -> dict:
+    """Fetch weather for explicit coordinates (skips city geocoding).
+
+    Returns:
+        dict with keys: condition, time_of_day, wind_speed, temperature,
+                        elevation, location, lat, lon
+    Raises:
+        requests.HTTPError: API error
+    """
+    resp = requests.get(
+        _FORECAST_URL,
+        params={
+            "latitude":        lat,
+            "longitude":       lon,
+            "current":         _FORECAST_PARAMS,
+            "wind_speed_unit": "ms",
+        },
+        timeout=8,
+    )
+    resp.raise_for_status()
+    data         = resp.json()
+    current      = data["current"]
+
+    wind_speed   = round(float(current["wind_speed_10m"]), 1)
+    weather_code = int(current["weather_code"])
+    is_day       = bool(current["is_day"])
+    temperature  = round(float(current["temperature_2m"]), 1)
+    elevation    = int(round(float(data.get("elevation", 0))))
+
+    return {
+        "condition":   _map_condition(wind_speed, weather_code),
+        "time_of_day": "Day" if is_day else "Night",
+        "wind_speed":  wind_speed,
+        "temperature": temperature,
+        "elevation":   elevation,
+        "location":    _reverse_geocode(lat, lon),
+        "lat":         lat,
+        "lon":         lon,
+    }
+
+
+def _geocode(city: str) -> tuple[float, float, str, int]:
     resp = requests.get(
         _GEOCODE_URL,
         params={"name": city, "count": 1, "language": "en", "format": "json"},
@@ -58,44 +105,10 @@ def _geocode(city: str) -> tuple[float, float, str]:
     results = resp.json().get("results")
     if not results:
         raise ValueError(f"Location '{city}' not found.")
-    r = results[0]
-    name = f"{r['name']}, {r.get('country_code', '')}"
-    return r["latitude"], r["longitude"], name
-
-
-def fetch_weather_by_coords(lat: float, lon: float) -> dict:
-    """Fetch weather for explicit coordinates (skips city geocoding).
-
-    Returns:
-        dict with keys: condition, time_of_day, wind_speed, location, lat, lon
-    Raises:
-        requests.HTTPError: API error
-    """
-    resp = requests.get(
-        _FORECAST_URL,
-        params={
-            "latitude": lat,
-            "longitude": lon,
-            "current": "wind_speed_10m,weather_code,is_day",
-            "wind_speed_unit": "ms",
-        },
-        timeout=8,
-    )
-    resp.raise_for_status()
-    current = resp.json()["current"]
-
-    wind_speed = round(float(current["wind_speed_10m"]), 1)
-    weather_code = int(current["weather_code"])
-    is_day = bool(current["is_day"])
-
-    return {
-        "condition": _map_condition(wind_speed, weather_code),
-        "time_of_day": "Day" if is_day else "Night",
-        "wind_speed": wind_speed,
-        "location": _reverse_geocode(lat, lon),
-        "lat": lat,
-        "lon": lon,
-    }
+    r         = results[0]
+    name      = f"{r['name']}, {r.get('country_code', '')}"
+    elevation = int(round(float(r.get("elevation") or 0)))
+    return r["latitude"], r["longitude"], name, elevation
 
 
 def _reverse_geocode(lat: float, lon: float) -> str:

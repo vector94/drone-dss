@@ -20,7 +20,9 @@ def _infer_airframe(row) -> str:
 
 def _load_drones(path: str) -> list[dict]:
     df = pd.read_csv(path)
+    # Rule 1: exclude unavailable and in-mission drones
     df = df[df["available"].astype(str).str.lower() == "true"].reset_index(drop=True)
+    df = df[df["in_mission"].astype(str).str.lower() != "true"].reset_index(drop=True)
 
     records = []
     for _, row in df.iterrows():
@@ -45,6 +47,11 @@ def _load_drones(path: str) -> list[dict]:
             "night_vision":    str(row["has_night_vision"]).lower() == "true",
             "cost":            int(row["operational_cost_eur_per_mission"]),
             "description":     description,
+            # Temperature tolerance — Rule 3
+            "temp_min":        float(row.get("temperature_tolerance_min_c", -40)),
+            "temp_max":        float(row.get("temperature_tolerance_max_c",  60)),
+            # Swarm scoring
+            "units_inventory": max(1, int(row.get("units_in_inventory", 1))),
             # Extra fields available for display
             "manufacturer":    str(row["manufacturer"]),
             "archetype":       str(row["drone_archetype"]),
