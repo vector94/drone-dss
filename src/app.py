@@ -534,6 +534,7 @@ if not run:
 
 # ── SIMULATION ──────────────────────────────────────────────────────────────────
 else:
+    _wi = st.session_state.get("weather_info") or {}
     scenario = {
         "emergency":     emergency,
         "weather":       weather,
@@ -543,6 +544,9 @@ else:
         "distance":      locals().get("dist", 5.0),
         "supply_weight": locals().get("sup",  0.0),
         "budget":        locals().get("bud",  500),
+        # Live values from weather API; engine falls back to category estimates if None
+        "wind_speed":    _wi.get("wind_speed"),
+        "temperature":   _wi.get("temperature"),
     }
 
     passed, eliminated = apply_rules(DRONES, scenario)

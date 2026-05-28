@@ -26,7 +26,7 @@ def fetch_weather(city: str) -> dict:
         params={
             "latitude": lat,
             "longitude": lon,
-            "current": "wind_speed_10m,weather_code,is_day",
+            "current": "wind_speed_10m,weather_code,is_day,temperature_2m",
             "wind_speed_unit": "ms",
         },
         timeout=8,
@@ -34,17 +34,19 @@ def fetch_weather(city: str) -> dict:
     resp.raise_for_status()
     current = resp.json()["current"]
 
-    wind_speed = round(float(current["wind_speed_10m"]), 1)
+    wind_speed   = round(float(current["wind_speed_10m"]), 1)
     weather_code = int(current["weather_code"])
-    is_day = bool(current["is_day"])
+    is_day       = bool(current["is_day"])
+    temperature  = round(float(current["temperature_2m"]), 1)
 
     return {
-        "condition": _map_condition(wind_speed, weather_code),
+        "condition":   _map_condition(wind_speed, weather_code),
         "time_of_day": "Day" if is_day else "Night",
-        "wind_speed": wind_speed,
-        "location": display_name,
-        "lat": lat,
-        "lon": lon,
+        "wind_speed":  wind_speed,
+        "temperature": temperature,
+        "location":    display_name,
+        "lat":         lat,
+        "lon":         lon,
     }
 
 
@@ -76,7 +78,7 @@ def fetch_weather_by_coords(lat: float, lon: float) -> dict:
         params={
             "latitude": lat,
             "longitude": lon,
-            "current": "wind_speed_10m,weather_code,is_day",
+            "current": "wind_speed_10m,weather_code,is_day,temperature_2m",
             "wind_speed_unit": "ms",
         },
         timeout=8,
@@ -84,17 +86,19 @@ def fetch_weather_by_coords(lat: float, lon: float) -> dict:
     resp.raise_for_status()
     current = resp.json()["current"]
 
-    wind_speed = round(float(current["wind_speed_10m"]), 1)
+    wind_speed   = round(float(current["wind_speed_10m"]), 1)
     weather_code = int(current["weather_code"])
-    is_day = bool(current["is_day"])
+    is_day       = bool(current["is_day"])
+    temperature  = round(float(current["temperature_2m"]), 1)
 
     return {
-        "condition": _map_condition(wind_speed, weather_code),
+        "condition":   _map_condition(wind_speed, weather_code),
         "time_of_day": "Day" if is_day else "Night",
-        "wind_speed": wind_speed,
-        "location": _reverse_geocode(lat, lon),
-        "lat": lat,
-        "lon": lon,
+        "wind_speed":  wind_speed,
+        "temperature": temperature,
+        "location":    _reverse_geocode(lat, lon),
+        "lat":         lat,
+        "lon":         lon,
     }
 
 
