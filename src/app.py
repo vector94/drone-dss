@@ -64,6 +64,26 @@ st.markdown(f"""
     box-sizing: border-box;
 }}
 
+[data-testid="stIconMaterial"],
+.stIconMaterial,
+.material-symbols-rounded,
+.material-symbols-outlined {{
+    font-family: 'Material Symbols Rounded', 'Material Symbols Outlined', 'Material Icons' !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+    font-size: 1.25rem !important;
+    line-height: 1 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    display: inline-block !important;
+    white-space: nowrap !important;
+    word-wrap: normal !important;
+    direction: ltr !important;
+    -webkit-font-feature-settings: 'liga' !important;
+    -webkit-font-smoothing: antialiased !important;
+    font-feature-settings: 'liga' !important;
+}}
+
 :root {{
     color-scheme: {"dark" if _dark else "light"} !important;
 }}
@@ -131,6 +151,11 @@ section[data-testid="stSidebar"],
 .sar-panel [data-baseweb="select"] svg {{
     color: {T['muted']} !important;
     fill: {T['muted']} !important;
+}}
+.sar-panel [data-baseweb="select"] [aria-selected="true"],
+.sar-panel [data-baseweb="select"] [aria-selected="true"] * {{
+    color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
 }}
 .sar-panel li {{
     color: {T['text']} !important;
@@ -249,6 +274,43 @@ div.st-key-open_panel button * {{
     -webkit-text-fill-color: inherit !important;
 }}
 
+/* Floating Streamlit/BaseWeb layers */
+[data-baseweb="popover"],
+[data-baseweb="menu"],
+[role="listbox"] {{
+    background: {T['surface']} !important;
+    color: {T['text']} !important;
+    border-color: {T['border']} !important;
+}}
+[data-baseweb="popover"] *,
+[data-baseweb="menu"] *,
+[role="listbox"] * {{
+    color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
+}}
+[role="option"],
+[data-baseweb="menu"] li {{
+    background: {T['surface']} !important;
+    color: {T['text']} !important;
+}}
+[role="option"]:hover,
+[role="option"][aria-selected="true"],
+[data-baseweb="menu"] li:hover {{
+    background: {T['surface2']} !important;
+    color: {T['text']} !important;
+}}
+[data-testid="stTooltipContent"],
+[data-testid="stTooltipContent"] *,
+[data-baseweb="tooltip"],
+[data-baseweb="tooltip"] *,
+div[role="tooltip"],
+div[role="tooltip"] * {{
+    background: {T['surface']} !important;
+    color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
+    border-color: {T['border']} !important;
+}}
+
 /* Expander */
 [data-testid="stExpander"] {{
     background: {T['surface']} !important;
@@ -260,7 +322,17 @@ div.st-key-open_panel button * {{
     color: {T['text']} !important;
     font-weight: 500 !important;
     font-size: 0.875rem !important;
-    padding: 0.75rem 1rem !important;
+    line-height: 1.35 !important;
+    min-height: 52px !important;
+    padding: 0.85rem 1.1rem !important;
+    align-items: center !important;
+}}
+[data-testid="stExpander"] summary p {{
+    color: {T['text']} !important;
+    font-size: 0.95rem !important;
+    font-weight: 650 !important;
+    line-height: 1.35 !important;
+    margin: 0 !important;
 }}
 [data-testid="stExpander"] summary:hover {{
     background: {T['surface2']} !important;
@@ -1698,7 +1770,13 @@ if (SHOULD_RESUME) {{
 
         # ── Alternative drones ──
         if len(scored) > 1:
-            with st.expander(f"📋  {len(scored)-1} alternative drone(s)"):
+            with st.expander("Alternative drones"):
+                st.markdown(f"""
+                <div style="color:{T['muted']};font-size:0.78rem;font-weight:600;
+                            letter-spacing:0.4px;text-transform:uppercase;margin:0.2rem 0 0.65rem;">
+                    {len(scored)-1} alternative drone(s)
+                </div>
+                """, unsafe_allow_html=True)
                 for d in scored[1:]:
                     ai = "✈️" if "Fixed" in d["type"] else "🚁"
                     st.markdown(f"""
@@ -1723,7 +1801,13 @@ if (SHOULD_RESUME) {{
 
         # ── Eliminated drones ──
         if eliminated:
-            with st.expander(f"❌  {len(eliminated)} drone(s) eliminated by rules"):
+            with st.expander("Eliminated by rules"):
+                st.markdown(f"""
+                <div style="color:{T['muted']};font-size:0.78rem;font-weight:600;
+                            letter-spacing:0.4px;text-transform:uppercase;margin:0.2rem 0 0.65rem;">
+                    {len(eliminated)} drone(s) eliminated by rules
+                </div>
+                """, unsafe_allow_html=True)
                 for d in eliminated:
                     ei = "✈️" if "Fixed" in d["type"] else "🚁"
                     reasons_html = "".join([
