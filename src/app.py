@@ -266,6 +266,56 @@ div.stButton.theme-toggle > button:hover {{
 [data-baseweb="input"]:has(input:not(:placeholder-shown)) ~ [data-testid="InputInstructions"] {{
     display: block !important;
 }}
+
+/* ── Welcome Cards ── */
+.welcome-card-wrapper {{
+    position: relative;
+    border-radius: 14px;
+    padding: 2px;
+    height: 100%;
+    overflow: hidden;
+    transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.4s ease;
+    background: {T['border']};
+}}
+
+.welcome-card-wrapper::before {{
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: conic-gradient(
+        from 0deg,
+        transparent 0%,
+        transparent 60%,
+        {T['accent']} 100%
+    );
+    animation: rotate-neon 2.5s linear infinite;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    z-index: 0;
+}}
+
+.welcome-card-wrapper:hover {{
+    transform: translateY(-5px);
+    box-shadow: 0 12px 30px {T['accent_bg']};
+}}
+
+.welcome-card-wrapper:hover::before {{
+    opacity: 1;
+}}
+
+.welcome-card-content {{
+    position: relative;
+    z-index: 1;
+    border-radius: 12px;
+    height: 100%;
+}}
+
+@keyframes rotate-neon {{
+    100% {{ transform: rotate(360deg); }}
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -498,17 +548,16 @@ if not run:
     for col, (icon, title, desc) in zip([col1, col2, col3], _cards):
         with col:
             st.markdown(f"""
-            <div style="
-                background:{T['surface']};
-                border:1px solid {T['border']};
-                border-radius:12px;
-                padding:1.5rem;
-                height:100%;
-            ">
-                <div style="font-size:1.75rem;margin-bottom:0.75rem;">{icon}</div>
-                <div style="font-weight:700;font-size:0.95rem;color:{T['text']};
-                            margin-bottom:0.5rem;">{title}</div>
-                <div style="font-size:0.83rem;color:{T['muted']};line-height:1.65;">{desc}</div>
+            <div class="welcome-card-wrapper">
+                <div class="welcome-card-content" style="
+                    background:{T['surface']};
+                    padding:1.5rem;
+                ">
+                    <div style="font-size:1.75rem;margin-bottom:0.75rem;">{icon}</div>
+                    <div style="font-weight:700;font-size:0.95rem;color:{T['text']};
+                                margin-bottom:0.5rem;">{title}</div>
+                    <div style="font-size:0.83rem;color:{T['muted']};line-height:1.65;">{desc}</div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
 

@@ -88,7 +88,6 @@
     &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
     &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
     &quot;dart.analysis.tool.window.visible&quot;: &quot;false&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;UI-improvements&quot;,
     &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
     &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
     &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
@@ -103,10 +102,10 @@
 }</component>
   <component name="RecapSpentCounter">
     <option name="endsOfQuotaMs" value="1780336846384" />
-    <option name="spentUsd" value="0.2244313" />
+    <option name="spentUsd" value="0.2744108" />
   </component>
   <component name="RecapUselessUpdatesCounter">
-    <option name="suspendCountdown" value="0" />
+    <option name="suspendCountdown" value="9" />
   </component>
   <component name="RunManager">
     <configuration default="true" type="JetRunConfigurationType">
@@ -210,7 +209,7 @@
       <workItem from="1779442043884" duration="143000" />
       <workItem from="1779442356633" duration="4625000" />
       <workItem from="1779530401140" duration="12000" />
-      <workItem from="1779956885024" duration="2571000" />
+      <workItem from="1779956885024" duration="6222000" />
     </task>
     <servers />
   </component>
