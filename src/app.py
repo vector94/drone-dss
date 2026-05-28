@@ -25,6 +25,8 @@ for _key, _val in [
     ("sup", 0.0),
     ("bud", 500),
     ("run", False),
+    ("submitted_scenario", None),
+    ("sim_run_id", 0),
     ("city_input", ""),
     ("map_lat", None), ("map_lon", None), ("map_last_click", None),
     ("map_view_lat", None), ("map_view_lon", None), ("map_zoom", None),
@@ -41,6 +43,8 @@ if st.session_state.get("_pending_weather"):
     st.session_state["tod_radio"]        = _upd.get("time_of_day", "Day")
     st.session_state["weather_info"]     = _upd
     st.session_state["weather_error"]    = None
+    if _upd.get("elevation") is not None:
+        st.session_state["altitude_auto"] = _upd["elevation"]
 
 _dark = st.session_state["theme"] == "dark"
 
@@ -242,6 +246,27 @@ div.stButton.theme-toggle > button:hover {{
     background: {T['accent_bg']} !important;
 }}
 
+/* Collapsed menu button */
+div.st-key-open_panel button {{
+    background: {T['surface2']} !important;
+    color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
+    border: 1px solid {T['border']} !important;
+    box-shadow: none !important;
+}}
+div.st-key-open_panel button:hover {{
+    background: {T['accent_bg']} !important;
+    color: {T['accent']} !important;
+    -webkit-text-fill-color: {T['accent']} !important;
+    border-color: {T['accent']} !important;
+    transform: none !important;
+    box-shadow: none !important;
+}}
+div.st-key-open_panel button * {{
+    color: inherit !important;
+    -webkit-text-fill-color: inherit !important;
+}}
+
 /* Expander */
 [data-testid="stExpander"] {{
     background: {T['surface']} !important;
@@ -376,6 +401,22 @@ components.html("""
 # ── LAYOUT ──────────────────────────────────────────────────────────────────────
 _sb_open = st.session_state["sidebar_open"]
 run      = st.session_state["run"]
+
+def current_scenario_from_state():
+    _wi = st.session_state.get("weather_info") or {}
+    return {
+        "emergency":     st.session_state["emergency"],
+        "weather":       st.session_state["weather_select"],
+        "time_of_day":   st.session_state["tod_radio"],
+        "altitude":      st.session_state.get("altitude_auto") or 1500,
+        "area":          st.session_state["area"],
+        "distance":      st.session_state["dist"],
+        "supply_weight": st.session_state["sup"],
+        "budget":        st.session_state["bud"],
+        # Live values from weather API; engine falls back to category estimates if None
+        "wind_speed":    _wi.get("wind_speed"),
+        "temperature":   _wi.get("temperature"),
+    }
 
 if _sb_open:
     _col_sb, _col_main = st.columns([1, 3], gap="small")
@@ -553,6 +594,8 @@ if _sb_open:
         st.markdown("---")
 
         if st.button("⚡  Run DSS Simulation", key="run_btn", use_container_width=True):
+            st.session_state["submitted_scenario"] = current_scenario_from_state()
+            st.session_state["sim_run_id"] += 1
             st.session_state["run"] = True
             st.rerun()
 
@@ -666,6 +709,7 @@ _map_section()
 if run:
     if st.button("↺  New Mission", key="new_mission"):
         st.session_state["run"] = False
+        st.session_state["submitted_scenario"] = None
         st.rerun()
 
 # ── WELCOME ─────────────────────────────────────────────────────────────────────
@@ -715,20 +759,8 @@ if not run:
 
 # ── SIMULATION ──────────────────────────────────────────────────────────────────
 else:
-    _wi = st.session_state.get("weather_info") or {}
-    scenario = {
-        "emergency":     emergency,
-        "weather":       weather,
-        "time_of_day":   time_of_day,
-        "altitude":      alt,                          # from geocoding elevation
-        "area":          locals().get("area", 5.0),
-        "distance":      locals().get("dist", 5.0),
-        "supply_weight": locals().get("sup",  0.0),
-        "budget":        locals().get("bud",  500),
-        # Live values from weather API; engine falls back to category estimates if None
-        "wind_speed":    _wi.get("wind_speed"),
-        "temperature":   _wi.get("temperature"),
-    }
+    # Use the scenario captured at click time; fall back to current state if missing
+    scenario = st.session_state.get("submitted_scenario") or current_scenario_from_state()
 
     passed, eliminated = apply_rules(DRONES, scenario)
 
@@ -754,7 +786,7 @@ else:
     else:
         scored     = score_drones(passed, scenario)
         top        = scored[0]
-        num_drones = get_num_drones(locals().get("area", 5.0))
+        num_drones = get_num_drones(scenario["area"])
         total_cost = num_drones * top["cost"]
 
         # ── Build simulation payload ──
@@ -787,6 +819,7 @@ else:
         if top["night_vision"]: top_cams.append("Night Vision")
 
         sim_data = {
+            "run_id": st.session_state["sim_run_id"],
             "drones": sim_drones,
             "scenario": scenario,
             "top": {
@@ -1350,6 +1383,15 @@ body {{
 
 <script>
 var DATA = {sim_json};
+var STORAGE_KEY = 'sar-dss-sim-seen-' + DATA.run_id;
+var SHOULD_RESUME = false;
+try {{
+    SHOULD_RESUME = localStorage.getItem(STORAGE_KEY) === '1';
+}} catch(e) {{}}
+
+function markSeen() {{
+    try {{ localStorage.setItem(STORAGE_KEY, '1'); }} catch(e) {{}}
+}}
 
 function setPhase(n) {{
     ['ps1','ps2','ps3','ps4'].forEach(function(id, i) {{
@@ -1541,6 +1583,61 @@ function phase4() {{
     setTimeout(function() {{ document.getElementById('rbtn').style.display='inline-block'; }}, 2200);
 }}
 
+function renderCompleted() {{
+    setPhase(4);
+    var top = DATA.top;
+    var planeIcon = String.fromCharCode(0x2708) + ' ';
+    var droneIcon = String.fromCodePoint(0x1f681) + ' ';
+    var bullet = ' ' + String.fromCharCode(0xb7) + ' ';
+    var euro = String.fromCharCode(0x20ac);
+    var ico = top.is_plane ? 'âœˆ ' : 'ðŸš ';
+    document.getElementById('wname').textContent = ico + top.name;
+    document.getElementById('wtype').textContent = top.type + ' Â· ' + top.desc;
+
+    document.getElementById('wname').textContent = (top.is_plane ? planeIcon : droneIcon) + top.name;
+    document.getElementById('wtype').textContent = top.type + bullet + top.desc;
+
+    var camsEl = document.getElementById('wcams');
+    camsEl.innerHTML = '';
+    top.cams.forEach(function(c) {{
+        var sp = document.createElement('span');
+        sp.className = 'wcam';
+        sp.textContent = c;
+        camsEl.appendChild(sp);
+    }});
+
+    document.getElementById('sring').style.background =
+        'conic-gradient({SIM['green']} 0%, {SIM['green']} ' + top.score + '%, {SIM['border']} ' + top.score + '%)';
+    document.getElementById('snum').textContent = Math.round(top.score) + '%';
+
+    var statsEl = document.getElementById('wstats');
+    statsEl.innerHTML = '';
+    [
+        ['Wind',     top.wind_resistance+' m/s'],
+        ['Altitude', Math.round(top.max_altitude/100)/10+' km'],
+        ['Battery',  top.battery_life+' min'],
+        ['Range',    top.max_range+' km'],
+        ['Payload',  top.payload+' kg'],
+        ['Cost',     'â‚¬'+top.cost]
+    ].forEach(function(s) {{
+        var el = document.createElement('div');
+        el.className = 'wstat';
+        el.style.opacity = '1';
+        el.style.transform = 'none';
+        el.innerHTML = '<div class="wl">'+s[0]+'</div><div class="wv">'+s[1]+'</div>';
+        statsEl.appendChild(el);
+    }});
+    var statValues = statsEl.querySelectorAll('.wv');
+    if (statValues.length) statValues[statValues.length - 1].textContent = euro + top.cost;
+
+    document.getElementById('wmeta').innerHTML =
+        '<div class="win-meta-item"><div class="wml">DRONES NEEDED</div><div class="wmv accent">'+DATA.num_drones+'</div></div>'+
+        '<div class="divider"></div>'+
+        '<div class="win-meta-item"><div class="wml">TOTAL DEPLOYMENT COST</div><div class="wmv green">â‚¬'+DATA.total_cost+'</div></div>';
+    document.querySelector('#wmeta .wmv.green').textContent = euro + DATA.total_cost;
+    document.getElementById('rbtn').style.display = 'inline-block';
+}}
+
 /* Confetti */
 function confetti() {{
     var cv=document.getElementById('confetti');
@@ -1579,6 +1676,7 @@ function confetti() {{
 
 /* Replay */
 function replay() {{
+    markSeen();
     document.getElementById('tbody').innerHTML='<span class="cursor" id="cur"></span>';
     document.getElementById('dgrid').innerHTML='';
     document.getElementById('scbars').innerHTML='';
@@ -1593,7 +1691,12 @@ function replay() {{
     phase1();
 }}
 
-phase1();
+if (SHOULD_RESUME) {{
+    renderCompleted();
+}} else {{
+    markSeen();
+    phase1();
+}}
 </script>
 </html>""", height=680)
 
