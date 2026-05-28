@@ -201,8 +201,7 @@ section[data-testid="stSidebar"],
 }}
 
 /* Buttons */
-div.stButton > button,
-[data-testid="stFormSubmitButton"] > button {{
+div.stButton > button {{
     background: {T['accent']} !important;
     color: white !important;
     border: none !important;
@@ -216,14 +215,12 @@ div.stButton > button,
     box-shadow: 0 1px 3px rgba(0,0,0,0.15) !important;
     cursor: pointer !important;
 }}
-div.stButton > button:hover,
-[data-testid="stFormSubmitButton"] > button:hover {{
+div.stButton > button:hover {{
     background: #2563EB !important;
     transform: translateY(-1px) !important;
     box-shadow: 0 4px 12px rgba(59,130,246,0.35) !important;
 }}
-div.stButton > button:active,
-[data-testid="stFormSubmitButton"] > button:active {{
+div.stButton > button:active {{
     transform: translateY(0) !important;
 }}
 
@@ -368,26 +365,7 @@ components.html("""
     doc.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && doc.activeElement && doc.activeElement.tagName === 'INPUT') {
             e.preventDefault();
-            var btn = doc.querySelector('[data-testid="stFormSubmitButton"] button');
-            if (btn) {
-                btn.focus();
-                btn.click();
-            }
-        }
-    }, true);
-})();
-</script>
-""", height=0)
-
-# ── ENTER KEY → BUTTON CLICK ────────────────────────────────────────────────────
-components.html("""
-<script>
-(function () {
-    var doc = window.parent.document;
-    doc.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && doc.activeElement && doc.activeElement.tagName === 'INPUT') {
-            e.preventDefault();
-            var btn = doc.querySelector('[data-testid="stFormSubmitButton"] button');
+            var btn = doc.querySelector('div.st-key-fetch_weather button');
             if (btn) {
                 btn.focus();
                 btn.click();
@@ -483,12 +461,9 @@ if _sb_open:
                                  key="emergency", label_visibility="collapsed")
 
         slabel("Mission Location")
-        with st.form("weather_form", clear_on_submit=False):
-            city_input   = st.text_input("loc", key="city_input", placeholder="e.g. Stockholm, Kiruna…", label_visibility="collapsed")
-            fetch_clicked = st.form_submit_button("🌐  Fetch Live Weather", use_container_width=True)
+        city_input = st.text_input("loc", key="city_input", placeholder="e.g. Stockholm, Kiruna…", label_visibility="collapsed")
 
-
-        if fetch_clicked:
+        if st.button("🌐  Fetch Live Weather", key="fetch_weather", use_container_width=True):
             if city_input.strip():
                 try:
                     with st.spinner("Fetching weather…"):
