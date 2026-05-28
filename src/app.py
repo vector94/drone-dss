@@ -418,6 +418,16 @@ def current_scenario_from_state():
         "temperature":   _wi.get("temperature"),
     }
 
+
+def _apply_weather_info(info: dict) -> None:
+    """Apply a fetched weather dict to all relevant session-state keys."""
+    st.session_state["weather_select"] = info.get("condition", "Clear")
+    st.session_state["tod_radio"]      = info.get("time_of_day", "Day")
+    st.session_state["weather_info"]   = info
+    st.session_state["weather_error"]  = None
+    if info.get("elevation") is not None:
+        st.session_state["altitude_auto"] = info["elevation"]
+
 if _sb_open:
     _col_sb, _col_main = st.columns([1, 3], gap="small")
 else:
@@ -483,11 +493,7 @@ if _sb_open:
                 try:
                     with st.spinner("Fetching weather…"):
                         _info = fetch_weather(city_input.strip())
-                    st.session_state["weather_select"] = _info["condition"]
-                    st.session_state["tod_radio"]      = _info["time_of_day"]
-                    st.session_state["weather_info"]   = _info
-                    st.session_state["altitude_auto"]  = _info.get("elevation", 0)
-                    st.session_state["weather_error"]  = None
+                    _apply_weather_info(_info)
                     # Move map pin to the geocoded city location
                     st.session_state["map_lat"]      = _info["lat"]
                     st.session_state["map_lon"]      = _info["lon"]
@@ -689,8 +695,7 @@ def _map_section():
         with st.spinner("Fetching weather for location…"):
             try:
                 _w = fetch_weather_by_coords(_result["lat"], _result["lon"])
-                st.session_state["_pending_weather"] = _w
-                st.session_state["weather_error"]    = None
+                _apply_weather_info(_w)
             except Exception as _e:
                 st.session_state["weather_error"] = str(_e)
         st.rerun(scope="app")
