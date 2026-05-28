@@ -62,6 +62,20 @@ st.markdown(f"""
     box-sizing: border-box;
 }}
 
+:root {{
+    color-scheme: {"dark" if _dark else "light"} !important;
+}}
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"],
+[data-testid="stToolbar"], .main {{
+    background: {T['bg']} !important;
+    color: {T['text']} !important;
+}}
+
+body, button, input, textarea, select {{
+    color: {T['text']} !important;
+}}
+
 /* ── Hide native Streamlit sidebar entirely (we use a column panel instead) ── */
 section[data-testid="stSidebar"],
 [data-testid="stSidebarCollapseButton"],
@@ -72,6 +86,7 @@ section[data-testid="stSidebar"],
 /* ── App chrome ── */
 .stApp {{
     background: {T['bg']} !important;
+    color: {T['text']} !important;
     min-height: 100vh;
 }}
 #MainMenu, footer, header {{ visibility: hidden; }}
@@ -101,8 +116,19 @@ section[data-testid="stSidebar"],
 .sar-panel [data-baseweb="select"] > div {{
     background: {T['surface2']} !important;
     border: 1px solid {T['border']} !important;
+    color: {T['text']} !important;
     border-radius: 8px !important;
     box-shadow: none !important;
+}}
+.sar-panel [data-baseweb="select"] span,
+.sar-panel [data-baseweb="select"] input,
+.sar-panel [data-baseweb="select"] [role="combobox"] {{
+    color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
+}}
+.sar-panel [data-baseweb="select"] svg {{
+    color: {T['muted']} !important;
+    fill: {T['muted']} !important;
 }}
 .sar-panel li {{
     color: {T['text']} !important;
@@ -115,9 +141,15 @@ section[data-testid="stSidebar"],
     background: {T['surface2']} !important;
     border: 1px solid {T['border']} !important;
     color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
     border-radius: 8px !important;
     box-shadow: none !important;
     transition: border-color 0.15s;
+}}
+.sar-panel .stTextInput input::placeholder {{
+    color: {T['muted']} !important;
+    -webkit-text-fill-color: {T['muted']} !important;
+    opacity: 1 !important;
 }}
 .sar-panel .stTextInput input:focus {{
     border-color: {T['accent']} !important;
@@ -139,6 +171,7 @@ section[data-testid="stSidebar"],
 .sar-panel .stRadio div[role="radiogroup"] label {{
     background: {T['surface2']};
     border: 1px solid {T['border']};
+    color: {T['text']} !important;
     border-radius: 8px;
     padding: 5px 16px;
     margin: 3px 2px;
@@ -226,8 +259,33 @@ div.stButton.theme-toggle > button:hover {{
 }}
 
 /* General text */
-.stMarkdown p, .stMarkdown span, p {{
+.stMarkdown, .stMarkdown p, .stMarkdown div,
+label, div[data-testid="stWidgetLabel"], div[data-testid="stWidgetLabel"] *,
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *,
+[data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] *,
+[data-testid="stText"], [data-testid="stText"] * {{
     color: {T['text']} !important;
+}}
+
+.st-emotion-cache-ue6h4q,
+.st-emotion-cache-16idsys,
+.st-emotion-cache-1fttcpj,
+.st-emotion-cache-10trblm,
+.st-emotion-cache-183lzff {{
+    color: {T['text']} !important;
+}}
+
+input, textarea, [contenteditable="true"] {{
+    background: {T['surface2']} !important;
+    color: {T['text']} !important;
+    -webkit-text-fill-color: {T['text']} !important;
+    caret-color: {T['accent']} !important;
+}}
+
+input::placeholder, textarea::placeholder {{
+    color: {T['muted']} !important;
+    -webkit-text-fill-color: {T['muted']} !important;
+    opacity: 1 !important;
 }}
 
 /* Scrollbar */
