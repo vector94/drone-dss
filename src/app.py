@@ -358,13 +358,39 @@ if _sb_open:
                 unsafe_allow_html=True,
             )
 
+        # Weather Condition — read-only, set by API fetch
+        _wc_val = st.session_state.get("weather_select", "Clear")
+        _wc_has_data = st.session_state.get("weather_info") is not None
+        _wc_color = T["green"] if _wc_has_data else T["muted"]
+        _wc_note  = "from location" if _wc_has_data else "fetch a location above"
+        weather   = _wc_val
         slabel("Weather Condition")
-        weather = st.selectbox("Weather", ["Clear", "Windy", "Storm", "Blizzard"],
-                               key="weather_select", label_visibility="collapsed")
+        st.markdown(
+            f"<div style='background:{T['surface2']};border:1px solid {T['border']};"
+            f"border-radius:8px;padding:0.5rem 0.75rem;margin-bottom:0.25rem;"
+            f"display:flex;align-items:center;justify-content:space-between;'>"
+            f"<span style='font-size:1rem;font-weight:700;color:{T['text']};'>{_wc_val}</span>"
+            f"<span style='font-size:0.7rem;color:{_wc_color};font-weight:500;'>{_wc_note}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
+        # Time of Day — read-only, set by API fetch
+        _tod_val    = st.session_state.get("tod_radio", "Day")
+        _tod_icon   = "☀️" if _tod_val == "Day" else "🌙"
+        _tod_color  = T["green"] if _wc_has_data else T["muted"]
+        _tod_note   = "from location" if _wc_has_data else "fetch a location above"
+        time_of_day = _tod_val
         slabel("Time of Day")
-        time_of_day = st.radio("Time", ["Day", "Night"], key="tod_radio",
-                               horizontal=True, label_visibility="collapsed")
+        st.markdown(
+            f"<div style='background:{T['surface2']};border:1px solid {T['border']};"
+            f"border-radius:8px;padding:0.5rem 0.75rem;margin-bottom:0.25rem;"
+            f"display:flex;align-items:center;justify-content:space-between;'>"
+            f"<span style='font-size:1rem;font-weight:700;color:{T['text']};'>{_tod_icon} {_tod_val}</span>"
+            f"<span style='font-size:0.7rem;color:{_tod_color};font-weight:500;'>{_tod_note}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
         st.markdown("---")
 
