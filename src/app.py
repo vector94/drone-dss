@@ -1,5 +1,3 @@
-import math
-
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.graph_objects as go
@@ -24,6 +22,7 @@ for _key, _val in [
     ("area", 5.0),
     ("map_area", 5.0),
     ("dist", 5.0),
+    ("manual_dist", 5.0),
     ("sup", 0.0),
     ("bud", 500),
     ("run", False),
@@ -538,6 +537,12 @@ def current_scenario_from_state():
 def sync_map_area_to_sidebar_area():
     st.session_state["area"] = st.session_state.get("map_area", st.session_state.get("area", 5.0))
 
+def set_distance_from_map_or_default(distance_km: float | None = None):
+    if distance_km is None:
+        st.session_state["dist"] = st.session_state.get("manual_dist", 5.0)
+    else:
+        st.session_state["dist"] = distance_km
+
 
 def _apply_weather_info(info: dict) -> None:
     """Apply a fetched weather dict to all relevant session-state keys."""
@@ -701,15 +706,6 @@ if _sb_open:
         )
         alt = _alt_val
         
-        slabel("Area to Cover (km²)")
-        area = st.slider("Area", 0.5, 30.0, 5.0, 0.5, key="area", label_visibility="collapsed")
-        st.session_state["map_area"] = area
-
-        _dist_estimate = round(min(25.0, max(0.5, math.sqrt(area) * 1.5)), 1)
-        slabel(f"Distance (km) &nbsp;·&nbsp; <span style='color:{T['muted']};font-weight:400;"
-               f"font-size:0.68rem;'>~{_dist_estimate} km suggested</span>")
-        dist = st.slider("Distance", 0.5, 25.0, 5.0, 0.5, key="dist", label_visibility="collapsed")
-
         slabel("Supply Weight (kg)")
         sup = st.slider("Supply", 0.0, 30.0, 0.0, 0.5, key="sup", label_visibility="collapsed")
 
@@ -861,11 +857,12 @@ def _map_section():
 
     if _hq_lat_d is not None and _ms_lat_d is not None:
         _dist_km = haversine(_hq_lat_d, _hq_lon_d, _ms_lat_d, _ms_lon_d)
-        st.session_state["dist"] = _dist_km
+        set_distance_from_map_or_default(_dist_km)
         _dist_display = f"{_dist_km} km"
         _dist_note    = "from map pins"
         _dist_color   = T["green"]
     else:
+        set_distance_from_map_or_default()
         _dist_display = f"{st.session_state.get('dist', 5.0)} km"
         _dist_note    = "set HQ + mission pins"
         _dist_color   = T["muted"]
